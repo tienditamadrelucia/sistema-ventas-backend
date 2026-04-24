@@ -3,6 +3,48 @@ import Usuario from "../models/Usuario.js";
 
 const router = express.Router();
 
+// LOGIN
+router.post("/login", async (req, res) => {
+  console.log("LLEGÓ PETICIÓN AL BACKEND");
+  try {
+    const { usuario, clave } = req.body;
+    const user = await Usuario.findOne({ usuario });
+    if (!user) {
+      return res.status(404).json({ ok: false, mensaje: "Usuario no encontrado" });
+    }
+    if (user.clave !== clave) {
+      return res.status(401).json({ ok: false, mensaje: "Clave incorrecta" });
+    }
+    res.json({
+      ok: true,
+      mensaje: "Login exitoso",
+      usuario: {
+        id: user._id,
+        usuario: user.usuario,
+        rol: user.rol
+      }
+    });
+  } catch (error) {
+    res.status(500).json({ ok: false, mensaje: "Error en login", detalle: error.message });
+  }
+});
+
+router.get("/debug-file", (req, res) => {
+  res.json({
+    ok: true,
+    mensaje: "Contenido actual del router",
+    rutas: [
+      "GET /",
+      "GET /:usuario",
+      "PUT /:id",
+      "DELETE /:id",
+      "POST /login (si aparece aquí, Render sí tomó los cambios)"
+    ],
+    archivoVersion: "v1.0-debug"
+  });
+});
+
+
 // LISTAR
 router.get("/", async (req, res) => {
   try {

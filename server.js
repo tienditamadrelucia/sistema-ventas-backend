@@ -1,7 +1,9 @@
 import express from "express";
 import cors from "cors";
 import { conectarDB } from "./db/conexion.js";
-import loginRoutes from "./routes/login.js";
+//import loginRoutes from "./routes/login.js";
+
+console.log("🔥 Cargando archivo:", new URL("./routes/usuarios.js", import.meta.url).pathname);
 import usuarios from "./routes/usuarios.js";
 import categorias from "./routes/categorias.js";
 import productos from "./routes/productos.js";
@@ -55,7 +57,7 @@ app.get("/api/ping", (req, res) => {
     app.use("/api/pagos", pagos);
     app.use("/api/vueltos", vueltos);    
     app.use("/api/logs", logsRoutes);
-    app.use("/api/login", loginRoutes);
+    //app.use("/api/login", loginRoutes);
     app.use("/api/movimientos", movimientos);
     app.use("/api/tasas", tasas);
     //app.use("/api/ventas", ventasRouter);
