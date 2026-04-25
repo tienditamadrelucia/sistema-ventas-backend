@@ -21,7 +21,7 @@ router.get("/ventas/:fecha", async (req, res) => {
                 VentasD: 0,
                 VentasBs: 0
             });
-        }
+        } 
         // Buscar todas las ventas del día
         const ventas = await dbMoneda.find({ fecha });
         // Sumar por moneda

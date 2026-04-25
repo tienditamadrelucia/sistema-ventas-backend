@@ -31,7 +31,14 @@ import caja from "./routes/rou_caja.js";
 const app = express();
 
 app.use(express.json());
-app.use(cors());
+app.use(cors({
+  origin: [
+  "http://localhost:3000",
+  "https://sistema-ventas-frontend.onrender.com"
+  ],
+  credentials: true
+}));
+
 
 // ⭐ 1. PRUEBA PARA SABER SI EXPRESS ESTÁ VIVO
 app.get("/api/ping", (req, res) => {
