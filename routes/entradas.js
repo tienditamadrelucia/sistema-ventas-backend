@@ -23,7 +23,6 @@ router.get("/", async (req, res) => {
       .skip((page - 1) * limit)
       .limit(parseInt(limit))
       .populate("productoId", "codigo descripcion");
-
     res.json({
       entradas,
       paginaActual: Number(page),
@@ -43,7 +42,6 @@ router.get("/", async (req, res) => {
 router.post("/", async (req, res) => {
   try {
     const { fecha, categoria, productoId, codigo, cantidad, observacion, usuarioActual } = req.body;
-
     const entrada = await Entrada.create({
       fecha: new Date(fecha),
       categoria,
@@ -52,9 +50,7 @@ router.post("/", async (req, res) => {
       cantidad,
       observacion
     });
-
     res.json({ ok: true, entrada });
-
   } catch (error) {
     return res.status(400).json({
     ok: false,
@@ -67,7 +63,6 @@ router.post("/", async (req, res) => {
 router.put("/:id", async (req, res) => {
   try {
     const { fecha, categoria, productoId, codigo, cantidad, observacion, usuarioActual } = req.body;
-
     const entrada = await Entrada.findByIdAndUpdate(
       req.params.id,
       {
@@ -80,13 +75,10 @@ router.put("/:id", async (req, res) => {
       },
       { new: true }
     );
-
     if (!entrada) {
       return res.status(404).json({ ok: false, error: "Entrada no encontrada" });
-    }
-    
+    }    
     res.json({ ok: true, entrada });
-
   } catch (error) {
     return res.status(400).json({
       ok: false,

@@ -46,7 +46,6 @@ router.get("/", async (req, res) => {
 router.post("/", async (req, res) => {
   try {
     const { fecha, categoria, productoId, codigo, cantidad, observacion } = req.body;
-
     const Unasalida = await dbSalidas.create({
       fecha: new Date(fecha),
       categoria,
@@ -55,8 +54,9 @@ router.post("/", async (req, res) => {
       cantidad,
       observacion
     });
-
-    res.status(201).json({ ok: true, salida });
+    res.status(201).json({ ok: true, Unasalida });
+    console.log("RESPUESTA QUE SE VA A ENVIAR:", { ok: true, salida: Unasalida });
+  console.log("BODY RECIBIDO:", req.body);
 
   } catch (error) {
     return res.status(400).json({

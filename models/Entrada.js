@@ -9,7 +9,7 @@ const entradaSchema = new mongoose.Schema(
       ref: "Producto",
       required: true
     },
-    codigo: {type: String, required: true},
+    codigo: {type: Number, required: true},
     cantidad: {type: Number, required: true },
     observacion: {type: String, required: true }
   },
