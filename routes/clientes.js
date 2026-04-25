@@ -107,7 +107,7 @@ router.put("/:id", async (req, res) => {
 // 🟢 ELIMINAR CLIENTE
 router.delete("/:id", async (req, res) => {
   try {
-    const id = req.params.id;    
+    const id = req.params.id;
     if (!id) {
       return res.status(400).json({ ok: false, error: "ID no proporcionado" });
     }
@@ -115,6 +115,17 @@ router.delete("/:id", async (req, res) => {
     if (!cliente) {
       return res.status(404).json({ ok: false, error: "Cliente no encontrado" });
     }
+
+    // 🔴 VALIDAR SI TIENE VENTAS ASOCIADAS
+    const ventas = await Venta.find({ clienteId: id });
+    if (ventas.length > 0) {
+      return res.status(400).json({
+        ok: false,
+        error: "No se puede eliminar el cliente porque tiene ventas asociadas"
+      });
+    }
+
+    // 🟢 SI NO TIENE VENTAS → ELIMINAR
     await Cliente.findByIdAndDelete(id);
     res.json({ ok: true });
   } catch (error) {
@@ -122,5 +133,6 @@ router.delete("/:id", async (req, res) => {
     res.status(500).json({ ok: false, error: "Error eliminando cliente" });
   }
 });
+
 
 export default router;
