@@ -40,8 +40,6 @@ router.post("/login", async (req, res) => {
     }
 });
 
-export default router;
-
 router.get("/debug-file", (req, res) => {
   res.json({
     ok: true,
