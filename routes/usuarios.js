@@ -3,31 +3,44 @@ import Usuario from "../models/Usuario.js";
 
 const router = express.Router();
 
-// LOGIN
+// Ruta para login
 router.post("/login", async (req, res) => {
-  console.log("LLEGÓ PETICIÓN AL BACKEND");
-  try {
-    const { usuario, clave } = req.body;
-    const user = await Usuario.findOne({ usuario });
-    if (!user) {
-      return res.status(404).json({ ok: false, mensaje: "Usuario no encontrado" });
+    const { usuario, clave } = req.body; // Debería recibir usuario y clave
+
+    if (!usuario || !clave) {
+        return res.status(400).json({ ok: false, mensaje: "Usuario y clave son requeridos" });
     }
-    if (user.clave !== clave) {
-      return res.status(401).json({ ok: false, mensaje: "Clave incorrecta" });
+
+    console.log("Datos recibidos:", req.body); // Verifica que está recibiendo los datos.
+
+    try {
+        const user = await Usuario.findOne({ usuario });
+        if (!user) {
+            return res.status(404).json({ ok: false, mensaje: "Usuario no encontrado" });
+        }
+
+        // Comparar contraseñas
+        const esPasswordCorrecto = await bcrypt.compare(clave, user.clave);
+        if (!esPasswordCorrecto) {
+            return res.status(401).json({ ok: false, mensaje: "Clave incorrecta" });
+        }
+
+        res.json({
+            ok: true,
+            mensaje: "Login exitoso",
+            usuario: {
+                id: user._id,
+                usuario: user.usuario,
+                rol: user.rol
+            }
+        });
+    } catch (error) {
+        console.error("Error en la consulta de usuario:", error);
+        res.status(500).json({ ok: false, mensaje: "Error en login", detalle: error.message });
     }
-    res.json({
-      ok: true,
-      mensaje: "Login exitoso",
-      usuario: {
-        id: user._id,
-        usuario: user.usuario,
-        rol: user.rol
-      }
-    });
-  } catch (error) {
-    res.status(500).json({ ok: false, mensaje: "Error en login", detalle: error.message });
-  }
 });
+
+export default router;
 
 router.get("/debug-file", (req, res) => {
   res.json({
