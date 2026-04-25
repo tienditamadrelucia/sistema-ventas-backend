@@ -5,26 +5,20 @@ const router = express.Router();
 
 // Ruta para login
 router.post("/login", async (req, res) => {
-    const { usuario, clave } = req.body; // Debería recibir usuario y clave
-
+    const { usuario, clave } = req.body;
     if (!usuario || !clave) {
         return res.status(400).json({ ok: false, mensaje: "Usuario y clave son requeridos" });
     }
-
-    console.log("Datos recibidos:", req.body); // Verifica que está recibiendo los datos.
-
+    console.log("Datos recibidos:", req.body);
     try {
         const user = await Usuario.findOne({ usuario });
         if (!user) {
             return res.status(404).json({ ok: false, mensaje: "Usuario no encontrado" });
         }
-
-        // Comparar contraseñas
-        const esPasswordCorrecto = await bcrypt.compare(clave, user.clave);
-        if (!esPasswordCorrecto) {
+        // Comparación SIN bcrypt (texto plano)
+        if (clave !== user.clave) {
             return res.status(401).json({ ok: false, mensaje: "Clave incorrecta" });
         }
-
         res.json({
             ok: true,
             mensaje: "Login exitoso",
@@ -39,6 +33,7 @@ router.post("/login", async (req, res) => {
         res.status(500).json({ ok: false, mensaje: "Error en login", detalle: error.message });
     }
 });
+
 
 router.get("/debug-file", (req, res) => {
   res.json({
