@@ -170,7 +170,7 @@ router.get("/reporte/:desde/:hasta", async (req, res) => {
         // ============================
         // PAGOS (operacion = "VENTA")
         // ============================
-        if (p.operacion === "VENTA") {
+        if (p.operacion === "VENTA" || p.operacion === "ABONO DE CREDITO") {  // SUMA PAGOS
           pagos.efectivoP += Number(p.efectivoP || 0);
           pagos.transferenciaP += Number(p.transferenciaP || 0);
 
@@ -198,20 +198,20 @@ router.get("/reporte/:desde/:hasta", async (req, res) => {
       // ============================
       totalVentas += Number(venta.total || 0);
 
-      totalEfectivoP += pagos.efectivoP;
+      totalEfectivoP += pagos.efectivoP + pagos.vueltoP;
       totalTransferenciaP += pagos.transferenciaP;
 
-      totalEfectivoBs += pagos.efectivoBs;
+      totalEfectivoBs += pagos.efectivoBs +pagos.vueltoBs;
       totalTransferenciaBs += pagos.transferenciaBs;
       totalPuntoBs += pagos.puntoBs;
       totalPagoMovilBs += pagos.pagomovilBs;
 
-      totalEfectivoD += pagos.efectivoD;
+      totalEfectivoD += pagos.efectivoD + pagos.vueltoD;
       totalZelle += pagos.zelle;
 
-      totalVueltoP += pagos.vueltoP;
-      totalVueltoBs += pagos.vueltoBs;
-      totalVueltoD += pagos.vueltoD;
+      //totalVueltoP += pagos.vueltoP;
+      //totalVueltoBs += pagos.vueltoBs;
+      //totalVueltoD += pagos.vueltoD;
 
       // ============================
       // 5. ARMAR REPORTE POR FACTURA
