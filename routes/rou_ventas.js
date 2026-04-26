@@ -5,6 +5,7 @@ import Moneda from "../models/dbMoneda.js";
 import Cliente from "../models/Cliente.js";
 import Producto from "../models/Producto.js";
 import { crearVenta, obtenerVentas, buscarVentaPorNumero } from "../controllers/con_ventas.js";
+import Tasas from "../models/dbTasas.js";
 
 const router = express.Router();
 
@@ -283,6 +284,16 @@ router.get("/reporte-creditos/:desde/:hasta", async (req, res) => {
     }).sort({ factura: 1 });
 
     const reporte = [];
+    // ============================
+    // ⭐ TASA DEL DÍA (HOY)
+    // ============================
+    const hoy = new Date().toISOString().slice(0, 10);
+    const tasaHoy = await Tasas.findOne({ fecha: hoy });
+    if (!tasaHoy) {
+      return res.json({ ok: false, msg: "No hay tasa registrada hoy" });
+    }
+    const tasaP = Number(tasaHoy.tasaP); // Pesos por dólar
+    const tasaD = Number(tasaHoy.tasaD); // Bolívares por dólar
 
     for (const venta of ventas) {
 
@@ -318,42 +329,38 @@ router.get("/reporte-creditos/:desde/:hasta", async (req, res) => {
       const abonosDocs = await Moneda.find({
         factura: venta.factura,
         operacion: "ABONO DE CREDITO"
-      }).sort({ fecha: 1 });
+      }).sort({ fecha: 1 });      
 
       const abonos = [];
-
-      // SUMAS POR MONEDA
-      let sumP = 0;
-      let sumBs = 0;
-      let sumD = 0;
+      let totalAbonadoD = 0; // ⭐ TOTAL ABONADO EN DÓLARES
 
       for (const a of abonosDocs) {
         abonos.push({
-          fecha: a.fecha,
-          efectivoP: a.efectivoP,
-          transferenciaP: a.transferenciaP,
-
-          efectivoBs: a.efectivoBs,
-          transferenciaBs: a.transferenciaBs,
-          puntoBs: a.puntoBs,
-          pagomovilBs: a.pagomovilBs,
-
-          efectivoD: a.efectivoD,
-          zelle: a.zelle
+        fecha: a.fecha,
+        efectivoP: a.efectivoP,
+        transferenciaP: a.transferenciaP,
+        efectivoBs: a.efectivoBs,
+        transferenciaBs: a.transferenciaBs,
+        puntoBs: a.puntoBs,
+        pagomovilBs: a.pagomovilBs,
+        efectivoD: a.efectivoD,
+        zelle: a.zelle
         });
-
-        // SUMAR ABONOS
-        sumP += (a.efectivoP + a.transferenciaP);
-        sumBs += (a.efectivoBs + a.transferenciaBs + a.puntoBs + a.pagomovilBs);
-        sumD += (a.efectivoD + a.zelle);
+        // ⭐ CONVERTIR TODO A DÓLARES
+        const abonoEnD =
+        (a.efectivoP + a.transferenciaP) / tasaP + // Pesos → D
+        (a.efectivoBs + a.transferenciaBs + a.puntoBs + a.pagomovilBs) / tasaD + // Bs → D
+        (a.efectivoD + a.zelle); // Dólares
+        totalAbonadoD += abonoEnD;
       }
 
+
       // ============================
-      // 4. SALDOS PENDIENTES
+      // ⭐ SALDOS PENDIENTES (CORRECTO)
       // ============================
-      const saldoP = venta.total - sumP;
-      const saldoBs = venta.total - sumBs;
-      const saldoD = venta.total - sumD;
+      const saldoD = venta.total - totalAbonadoD; // saldo real en dólares
+      const saldoP = saldoD * tasaP;              // convertir a pesos
+      const saldoBs = saldoD * tasaD;             // convertir a bolívares
 
       // ============================
       // 5. ARMAR REPORTE
