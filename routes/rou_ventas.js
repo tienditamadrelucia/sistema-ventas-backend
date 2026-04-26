@@ -95,6 +95,26 @@ router.get("/reporte/:desde/:hasta", async (req, res) => {
 
     const reporte = [];
 
+    // ============================
+    //  TOTALES GENERALES
+    // ============================
+    let totalVentas = 0;
+
+    let totalEfectivoP = 0;
+    let totalTransferenciaP = 0;
+
+    let totalEfectivoBs = 0;
+    let totalTransferenciaBs = 0;
+    let totalPuntoBs = 0;
+    let totalPagoMovilBs = 0;
+
+    let totalEfectivoD = 0;
+    let totalZelle = 0;
+
+    let totalVueltoP = 0;
+    let totalVueltoBs = 0;
+    let totalVueltoD = 0;
+
     for (const venta of ventas) {
 
       // ============================
@@ -129,7 +149,6 @@ router.get("/reporte/:desde/:hasta", async (req, res) => {
       const pagosDocs = await Moneda.find({ factura: venta.factura });
 
       let pagos = {
-        // PAGOS
         efectivoP: 0,
         transferenciaP: 0,
 
@@ -139,9 +158,8 @@ router.get("/reporte/:desde/:hasta", async (req, res) => {
         pagomovilBs: 0,
 
         efectivoD: 0,
-        zelle: 0,   // ✔ ESTE ES EL NOMBRE REAL
+        zelle: 0,
 
-        // VUELTOS (ya vienen negativos)
         vueltoP: 0,
         vueltoBs: 0,
         vueltoD: 0
@@ -150,9 +168,9 @@ router.get("/reporte/:desde/:hasta", async (req, res) => {
       for (const p of pagosDocs) {
 
         // ============================
-        // PAGOS
+        // PAGOS (operacion = "VENTA")
         // ============================
-        if (p.operacion === "PAGO") {
+        if (p.operacion === "VENTA") {
           pagos.efectivoP += Number(p.efectivoP || 0);
           pagos.transferenciaP += Number(p.transferenciaP || 0);
 
@@ -162,11 +180,11 @@ router.get("/reporte/:desde/:hasta", async (req, res) => {
           pagos.pagomovilBs += Number(p.pagomovilBs || 0);
 
           pagos.efectivoD += Number(p.efectivoD || 0);
-          pagos.zelle += Number(p.zelle || 0);   // ✔ CORREGIDO
+          pagos.zelle += Number(p.zelle || 0);
         }
 
         // ============================
-        // VUELTOS (YA NEGATIVOS)
+        // VUELTOS (operacion = "VUELTOS")
         // ============================
         if (p.operacion === "VUELTOS") {
           pagos.vueltoP += Number(p.efectivoP || 0);
@@ -176,7 +194,27 @@ router.get("/reporte/:desde/:hasta", async (req, res) => {
       }
 
       // ============================
-      // 4. ARMAR REPORTE
+      // 4. SUMAR A TOTALES GENERALES
+      // ============================
+      totalVentas += Number(venta.total || 0);
+
+      totalEfectivoP += pagos.efectivoP;
+      totalTransferenciaP += pagos.transferenciaP;
+
+      totalEfectivoBs += pagos.efectivoBs;
+      totalTransferenciaBs += pagos.transferenciaBs;
+      totalPuntoBs += pagos.puntoBs;
+      totalPagoMovilBs += pagos.pagomovilBs;
+
+      totalEfectivoD += pagos.efectivoD;
+      totalZelle += pagos.zelle;
+
+      totalVueltoP += pagos.vueltoP;
+      totalVueltoBs += pagos.vueltoBs;
+      totalVueltoD += pagos.vueltoD;
+
+      // ============================
+      // 5. ARMAR REPORTE POR FACTURA
       // ============================
       reporte.push({
         venta,
@@ -186,13 +224,40 @@ router.get("/reporte/:desde/:hasta", async (req, res) => {
       });
     }
 
-    res.json({ ok: true, reporte });
+    // ============================
+    // 6. RESPUESTA FINAL
+    // ============================
+    res.json({
+      ok: true,
+      reporte,
+      totales: {
+        totalVentas,
+
+        totalEfectivoP,
+        totalTransferenciaP,
+
+        totalEfectivoBs,
+        totalTransferenciaBs,
+        totalPuntoBs,
+        totalPagoMovilBs,
+
+        totalEfectivoD,
+        totalZelle,
+
+        totalVueltoP,
+        totalVueltoBs,
+        totalVueltoD,
+
+        totalNeto: totalVentas + totalVueltoP + totalVueltoBs + totalVueltoD
+      }
+    });
 
   } catch (error) {
     console.log("ERROR REPORTE:", error);
     res.status(500).json({ ok: false, msg: "Error generando reporte" });
   }
 });
+
 
 
 
