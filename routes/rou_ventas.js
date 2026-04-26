@@ -113,7 +113,7 @@ router.get("/reporte/:desde/:hasta", async (req, res) => {
       const pagos = await Moneda.findOne({ factura: venta.factura });
       reporte.push({
         venta,
-        clienteNombre: cliente ? cliente.nombre : "SIN NOMBRE",
+        clienteNombre: cliente ? cliente.nombreCompleto : "SIN NOMBRE",
         productos,
         pagos
       });
