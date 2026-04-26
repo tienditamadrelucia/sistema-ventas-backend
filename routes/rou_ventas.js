@@ -269,10 +269,114 @@ router.get("/reporte/:desde/:hasta", async (req, res) => {
   }
 });
 
+router.get("/reporte-creditos/:desde/:hasta", async (req, res) => {
+  try {
+    const { desde, hasta } = req.params;
 
+    const fechaInicio = new Date(desde + "T00:00:00");
+    const fechaFin = new Date(hasta + "T23:59:59");
 
+    // ⭐ SOLO FACTURAS A CRÉDITO
+    const ventas = await Ventas.find({
+      fecha: { $gte: fechaInicio, $lte: fechaFin },
+      estado: "CREDITO"
+    }).sort({ factura: 1 });
 
+    const reporte = [];
 
+    for (const venta of ventas) {
 
+      // ============================
+      // 1. CLIENTE
+      // ============================
+      const cliente = await Cliente.findOne({ identificacion: venta.cliente });
+
+      // ============================
+      // 2. PRODUCTOS
+      // ============================
+      const vendidos = await Vendidos.find({ factura: venta.factura });
+
+      const productos = [];
+
+      for (const v of vendidos) {
+        const prod = await Producto.findById(v.productoId);
+
+        productos.push({
+          codigo: prod ? prod.codigo : "N/A",
+          descripcion: prod ? prod.descripcion : "Producto no encontrado",
+          cantidad: v.cantidad,
+          precioSistema: prod ? prod.venta : 0,
+          precioVenta: v.precio,
+          dscto: v.dscto,
+          total: v.total
+        });
+      }
+
+      // ============================
+      // 3. ABONOS (Moneda)
+      // ============================
+      const abonosDocs = await Moneda.find({
+        factura: venta.factura,
+        operacion: "ABONO DE CREDITO"
+      }).sort({ fecha: 1 });
+
+      const abonos = [];
+
+      // SUMAS POR MONEDA
+      let sumP = 0;
+      let sumBs = 0;
+      let sumD = 0;
+
+      for (const a of abonosDocs) {
+        abonos.push({
+          fecha: a.fecha,
+          efectivoP: a.efectivoP,
+          transferenciaP: a.transferenciaP,
+
+          efectivoBs: a.efectivoBs,
+          transferenciaBs: a.transferenciaBs,
+          puntoBs: a.puntoBs,
+          pagomovilBs: a.pagomovilBs,
+
+          efectivoD: a.efectivoD,
+          zelle: a.zelle
+        });
+
+        // SUMAR ABONOS
+        sumP += (a.efectivoP + a.transferenciaP);
+        sumBs += (a.efectivoBs + a.transferenciaBs + a.puntoBs + a.pagomovilBs);
+        sumD += (a.efectivoD + a.zelle);
+      }
+
+      // ============================
+      // 4. SALDOS PENDIENTES
+      // ============================
+      const saldoP = venta.total - sumP;
+      const saldoBs = venta.total - sumBs;
+      const saldoD = venta.total - sumD;
+
+      // ============================
+      // 5. ARMAR REPORTE
+      // ============================
+      reporte.push({
+        venta,
+        clienteNombre: cliente ? cliente.nombreCompleto : "SIN NOMBRE",
+        productos,
+        abonos,
+        saldo: {
+          pesos: saldoP,
+          bolivares: saldoBs,
+          dolares: saldoD
+        }
+      });
+    }
+
+    res.json({ ok: true, reporte });
+
+  } catch (error) {
+    console.log("ERROR REPORTE CREDITOS:", error);
+    res.status(500).json({ ok: false, msg: "Error generando reporte de créditos" });
+  }
+});
 
 export default router;
