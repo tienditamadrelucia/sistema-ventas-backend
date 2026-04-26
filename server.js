@@ -28,6 +28,7 @@ import vendidos from "./routes/rou_vendidos.js";
 import gastos from "./routes/rou_gastos.js";
 import caja from "./routes/rou_caja.js";
 
+
 const app = express();
 
 app.use(express.json());
@@ -74,7 +75,7 @@ app.get("/api/ping", (req, res) => {
     app.use("/api/moneda", moneda);
     app.use("/api/facturas", reservaRoutes);
     app.use("/api/gastos", gastos);
-    app.use("/api/caja", caja);
+    app.use("/api/caja", caja);    
 
     // ⭐ 4. MANEJO GLOBAL DE ERRORES
     app.use((err, req, res, next) => {
