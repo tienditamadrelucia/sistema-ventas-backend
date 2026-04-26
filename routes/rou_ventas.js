@@ -92,25 +92,66 @@ router.get("/reporte/:desde/:hasta", async (req, res) => {
     }).sort({ factura: 1 });
     const reporte = [];
     for (const venta of ventas) {
-      // Buscar nombre del cliente
-      const cliente = await Cliente.findOne({ identificacion: venta.cliente });
-      // Buscar productos vendidos
+      // ============================
+      // 1. CLIENTE
+      // ============================
+      const cliente = await Cliente.findOne({ identificacion: venta.cliente });      
+      // ============================
+      // 2. PRODUCTOS
+      // ============================
       const vendidos = await Vendidos.find({ factura: venta.factura });
       const productos = [];
       for (const v of vendidos) {
         const prod = await Producto.findById(v.productoId);
         productos.push({
-          codigo: prod.codigo,
-          descripcion: prod.descripcion,
-          precioSistema: prod.precioSistema,
+          codigo: prod ? prod.codigo : "N/A",
+          descripcion: prod ? prod.descripcion : "Producto no encontrado",
+          precioSistema: prod ? prod.precioSistema : 0,
           cantidad: v.cantidad,
           precioVenta: v.precio,
           dscto: v.dscto,
           total: v.total
         });
       }
-      // Buscar pagos
-      const pagos = await Moneda.findOne({ factura: venta.factura });
+      // ============================
+      // 3. PAGOS + VUELTOS
+      // ============================
+      const pagosDocs = await Moneda.find({ factura: venta.factura });
+      let pagos = {
+        // pagos
+        efectivoP: 0,
+        transferenciaP: 0,
+        efectivoBs: 0,
+        transferenciaBs: 0,
+        puntoBs: 0,
+        pagomovilBs: 0,
+        efectivoD: 0,
+        zelleD: 0,
+        // vueltos (ya vienen en negativo)
+        vueltoP: 0,
+        vueltoBs: 0,
+        vueltoD: 0
+      };
+      for (const p of pagosDocs) {
+        if (p.operacion === "PAGO") {
+          pagos.efectivoP += Number(p.efectivoP || 0);
+          pagos.transferenciaP += Number(p.transferenciaP || 0);
+          pagos.efectivoBs += Number(p.efectivoBs || 0);
+          pagos.transferenciaBs += Number(p.transferenciaBs || 0);
+          pagos.puntoBs += Number(p.puntoBs || 0);
+          pagos.pagomovilBs += Number(p.pagomovilBs || 0);
+          pagos.efectivoD += Number(p.efectivoD || 0);
+          pagos.zelleD += Number(p.zelleD || 0);
+        }
+        if (p.operacion === "VUELTOS") {
+          pagos.vueltoP += Number(p.efectivoP || 0);
+          pagos.vueltoBs += Number(p.efectivoBs || 0);
+          pagos.vueltoD += Number(p.efectivoD || 0);
+        }
+      }
+      // ============================
+      // 4. ARMAR REPORTE
+      // ============================
       reporte.push({
         venta,
         clienteNombre: cliente ? cliente.nombreCompleto : "SIN NOMBRE",
@@ -120,10 +161,11 @@ router.get("/reporte/:desde/:hasta", async (req, res) => {
     }
     res.json({ ok: true, reporte });
   } catch (error) {
-    console.log(error);
+    console.log("ERROR REPORTE:", error);
     res.status(500).json({ ok: false, msg: "Error generando reporte" });
   }
 });
+
 
 
 
