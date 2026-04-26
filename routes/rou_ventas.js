@@ -85,67 +85,44 @@ router.get("/reporte/:desde/:hasta", async (req, res) => {
     const { desde, hasta } = req.params;
     const fechaInicio = new Date(desde + "T00:00:00");
     const fechaFin = new Date(hasta + "T23:59:59");
-    // 1. Buscar ventas en el rango
     const ventas = await Ventas.find({
       fecha: { $gte: fechaInicio, $lte: fechaFin }
     }).sort({ factura: 1 });
-    if (ventas.length === 0) {
-      return res.json({ ok: false, msg: "No hay ventas en este rango" });
-    }
     const reporte = [];
-    // Totales finales por método de pago
-    let totalEfectivoP = 0;
-    let totalTransferenciaP = 0;
-    let totalEfectivoBs = 0;
-    let totalTransferenciaBs = 0;
-    let totalPuntoBs = 0;
-    let totalPagomovilBs = 0;
-    let totalEfectivoD = 0;
-    let totalZelle = 0;
     for (const venta of ventas) {
-      const factura = venta.factura;
-      // 2. Productos vendidos
-      const productos = await Vendidos.find({ factura });
-      // 3. Pagos
-      const pagos = await Moneda.find({ factura });
-      // Acumular totales finales
-      for (const p of pagos) {
-        totalEfectivoP += Number(p.efectivoP || 0);
-        totalTransferenciaP += Number(p.transferenciaP || 0);
-        totalEfectivoBs += Number(p.efectivoBs || 0);
-        totalTransferenciaBs += Number(p.transferenciaBs || 0);
-        totalPuntoBs += Number(p.puntoBs || 0);
-        totalPagomovilBs += Number(p.pagomovilBs || 0);
-        totalEfectivoD += Number(p.efectivoD || 0);
-        totalZelle += Number(p.zelleD || 0);
+      // Buscar nombre del cliente
+      const cliente = await Clientes.findOne({ identificacion: venta.cliente });
+      // Buscar productos vendidos
+      const vendidos = await Vendidos.find({ factura: venta.factura });
+      const productos = [];
+      for (const v of vendidos) {
+        const prod = await Productos.findById(v.productoId);
+        productos.push({
+          codigo: prod.codigo,
+          descripcion: prod.descripcion,
+          precioSistema: prod.precioSistema,
+          cantidad: v.cantidad,
+          precioVenta: v.precio,
+          dscto: v.dscto,
+          total: v.total
+        });
       }
+      // Buscar pagos
+      const pagos = await Moneda.findOne({ factura: venta.factura });
       reporte.push({
         venta,
+        clienteNombre: cliente ? cliente.nombre : "SIN NOMBRE",
         productos,
         pagos
       });
     }
-    return res.json({
-      ok: true,
-      reporte,
-      totales: {
-        totalEfectivoP,
-        totalTransferenciaP,
-        totalEfectivoBs,
-        totalTransferenciaBs,
-        totalPuntoBs,
-        totalPagomovilBs,
-        totalEfectivoD,
-        totalZelle
-      }
-    });
+    res.json({ ok: true, reporte });
   } catch (error) {
-    console.error("Error generando reporte:", error);
-    return res.status(500).json({
-      ok: false,
-      msg: "Error generando reporte"
-    });
+    console.log(error);
+    res.status(500).json({ ok: false, msg: "Error generando reporte" });
   }
 });
+
+
 
 export default router;
