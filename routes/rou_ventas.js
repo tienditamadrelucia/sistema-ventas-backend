@@ -46,4 +46,32 @@ router.get("/ventas/:fecha", async (req, res) => {
     }
 });
 
+router.get("/detalle/:factura", async (req, res) => {
+  try {
+    const factura = Number(req.params.factura);
+    // Buscar venta
+    const venta = await Ventas.findOne({ factura });
+    if (!venta) {
+      return res.json({ ok: false, msg: "Factura no encontrada" });
+    }
+    // Buscar detalle
+    const detalle = await Vendidos.find({ factura });
+    // Buscar pagos
+    const pagos = await Moneda.find({ factura });
+    return res.json({
+      ok: true,
+      venta,
+      detalle,
+      pagos
+    });
+  } catch (error) {
+    console.error("Error consultando factura:", error);
+    return res.status(500).json({
+      ok: false,
+      msg: "Error consultando factura"
+    });
+  }
+});
+
+
 export default router;
