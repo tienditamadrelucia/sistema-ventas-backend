@@ -3,6 +3,7 @@ import Ventas from "../models/dbVentas.js";
 import Vendidos from "../models/dbVendidos.js";
 import Moneda from "../models/dbMoneda.js";
 import Clientes from "../models/Cliente.js";
+import Producto from "../models/Producto.js";
 import { crearVenta, obtenerVentas, buscarVentaPorNumero } from "../controllers/con_ventas.js";
 
 const router = express.Router();
