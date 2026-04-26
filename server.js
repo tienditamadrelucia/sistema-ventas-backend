@@ -34,11 +34,12 @@ const app = express();
 app.use(express.json());
 app.use(cors({
   origin: [
-  "http://localhost:3000",
-  "https://sistema-ventas-frontend.onrender.com"
+    "http://localhost:3000",
+    "https://sistema-ventas-frontend-tan.vercel.app"
   ],
   credentials: true
 }));
+
 
 
 // ⭐ 1. PRUEBA PARA SABER SI EXPRESS ESTÁ VIVO
