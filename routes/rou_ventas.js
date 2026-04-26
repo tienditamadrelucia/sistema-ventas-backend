@@ -95,7 +95,7 @@ router.get("/reporte/:desde/:hasta", async (req, res) => {
       // ============================
       // 1. CLIENTE
       // ============================
-      const cliente = await Cliente.findOne({ identificacion: venta.cliente });      
+      const cliente = await Cliente.findOne({ identificacion: venta.cliente });
       // ============================
       // 2. PRODUCTOS
       // ============================
@@ -106,9 +106,9 @@ router.get("/reporte/:desde/:hasta", async (req, res) => {
         productos.push({
           codigo: prod ? prod.codigo : "N/A",
           descripcion: prod ? prod.descripcion : "Producto no encontrado",
-          precioSistema: prod ? prod.precioSistema : 0,
+          precioSistema: prod ? prod.venta : 0,   // ✔ PRECIO DEL SISTEMA
           cantidad: v.cantidad,
-          precioVenta: v.precio,
+          precioVenta: v.precio,                  // ✔ PRECIO REAL DE VENTA
           dscto: v.dscto,
           total: v.total
         });
@@ -118,7 +118,7 @@ router.get("/reporte/:desde/:hasta", async (req, res) => {
       // ============================
       const pagosDocs = await Moneda.find({ factura: venta.factura });
       let pagos = {
-        // pagos
+        // PAGOS
         efectivoP: 0,
         transferenciaP: 0,
         efectivoBs: 0,
@@ -127,12 +127,15 @@ router.get("/reporte/:desde/:hasta", async (req, res) => {
         pagomovilBs: 0,
         efectivoD: 0,
         zelleD: 0,
-        // vueltos (ya vienen en negativo)
+        // VUELTOS (ya vienen negativos)
         vueltoP: 0,
         vueltoBs: 0,
         vueltoD: 0
       };
       for (const p of pagosDocs) {
+        // ============================
+        // PAGOS
+        // ============================
         if (p.operacion === "PAGO") {
           pagos.efectivoP += Number(p.efectivoP || 0);
           pagos.transferenciaP += Number(p.transferenciaP || 0);
@@ -143,6 +146,9 @@ router.get("/reporte/:desde/:hasta", async (req, res) => {
           pagos.efectivoD += Number(p.efectivoD || 0);
           pagos.zelleD += Number(p.zelleD || 0);
         }
+        // ============================
+        // VUELTOS (YA NEGATIVOS)
+        // ============================
         if (p.operacion === "VUELTOS") {
           pagos.vueltoP += Number(p.efectivoP || 0);
           pagos.vueltoBs += Number(p.efectivoBs || 0);
@@ -165,6 +171,7 @@ router.get("/reporte/:desde/:hasta", async (req, res) => {
     res.status(500).json({ ok: false, msg: "Error generando reporte" });
   }
 });
+
 
 
 
