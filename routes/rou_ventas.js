@@ -50,7 +50,7 @@ router.get("/detalle/:factura", async (req, res) => {
   try {
     const factura = Number(req.params.factura);
     // Buscar venta
-    const venta = await Ventas.findOne({ factura });
+    const venta = await Ventas.findOne({ numeroFactura: factura });
     if (!venta) {
       return res.json({ ok: false, msg: "Factura no encontrada" });
     }
