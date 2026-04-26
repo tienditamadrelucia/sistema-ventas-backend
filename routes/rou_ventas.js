@@ -2,7 +2,7 @@ import express from "express";
 import Ventas from "../models/dbVentas.js";
 import Vendidos from "../models/dbVendidos.js";
 import Moneda from "../models/dbMoneda.js";
-import Clientes from "../models/Cliente.js";
+import Cliente from "../models/Cliente.js";
 import Producto from "../models/Producto.js";
 import { crearVenta, obtenerVentas, buscarVentaPorNumero } from "../controllers/con_ventas.js";
 
@@ -93,12 +93,12 @@ router.get("/reporte/:desde/:hasta", async (req, res) => {
     const reporte = [];
     for (const venta of ventas) {
       // Buscar nombre del cliente
-      const cliente = await Clientes.findOne({ identificacion: venta.cliente });
+      const cliente = await Cliente.findOne({ identificacion: venta.cliente });
       // Buscar productos vendidos
       const vendidos = await Vendidos.find({ factura: venta.factura });
       const productos = [];
       for (const v of vendidos) {
-        const prod = await Productos.findById(v.productoId);
+        const prod = await Producto.findById(v.productoId);
         productos.push({
           codigo: prod.codigo,
           descripcion: prod.descripcion,
