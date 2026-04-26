@@ -228,29 +228,40 @@ router.get("/reporte/:desde/:hasta", async (req, res) => {
     // 6. RESPUESTA FINAL
     // ============================
     res.json({
-      ok: true,
-      reporte,
-      totales: {
-        totalVentas,
+  ok: true,
+  reporte,
+  totales: {
+    // PESOS
+    totalPesos: totalEfectivoP + totalTransferenciaP + totalVueltoP,
 
-        totalEfectivoP,
-        totalTransferenciaP,
+    // BOLÍVARES
+    totalBolivares:
+      totalEfectivoBs +
+      totalTransferenciaBs +
+      totalPuntoBs +
+      totalPagoMovilBs +
+      totalVueltoBs,
 
-        totalEfectivoBs,
-        totalTransferenciaBs,
-        totalPuntoBs,
-        totalPagoMovilBs,
+    // DÓLARES
+    totalDolares: totalEfectivoD + totalZelle + totalVueltoD,
 
-        totalEfectivoD,
-        totalZelle,
+    // TOTALES INDIVIDUALES
+    totalEfectivoP,
+    totalTransferenciaP,
 
-        totalVueltoP,
-        totalVueltoBs,
-        totalVueltoD,
+    totalEfectivoBs,
+    totalTransferenciaBs,
+    totalPuntoBs,
+    totalPagoMovilBs,
 
-        totalNeto: totalVentas + totalVueltoP + totalVueltoBs + totalVueltoD
-      }
-    });
+    totalEfectivoD,
+    totalZelle,
+
+    totalVueltoP,
+    totalVueltoBs,
+    totalVueltoD
+  }
+});
 
   } catch (error) {
     console.log("ERROR REPORTE:", error);
