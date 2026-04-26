@@ -85,24 +85,33 @@ router.get("/detalle/:factura", async (req, res) => {
 router.get("/reporte/:desde/:hasta", async (req, res) => {
   try {
     const { desde, hasta } = req.params;
+
     const fechaInicio = new Date(desde + "T00:00:00");
     const fechaFin = new Date(hasta + "T23:59:59");
+
     const ventas = await Ventas.find({
       fecha: { $gte: fechaInicio, $lte: fechaFin }
     }).sort({ factura: 1 });
+
     const reporte = [];
+
     for (const venta of ventas) {
+
       // ============================
       // 1. CLIENTE
       // ============================
       const cliente = await Cliente.findOne({ identificacion: venta.cliente });
+
       // ============================
       // 2. PRODUCTOS
       // ============================
       const vendidos = await Vendidos.find({ factura: venta.factura });
+
       const productos = [];
+
       for (const v of vendidos) {
         const prod = await Producto.findById(v.productoId);
+
         productos.push({
           codigo: prod ? prod.codigo : "N/A",
           descripcion: prod ? prod.descripcion : "Producto no encontrado",
@@ -113,39 +122,49 @@ router.get("/reporte/:desde/:hasta", async (req, res) => {
           total: v.total
         });
       }
+
       // ============================
       // 3. PAGOS + VUELTOS
       // ============================
       const pagosDocs = await Moneda.find({ factura: venta.factura });
+
       let pagos = {
         // PAGOS
         efectivoP: 0,
         transferenciaP: 0,
+
         efectivoBs: 0,
         transferenciaBs: 0,
         puntoBs: 0,
         pagomovilBs: 0,
+
         efectivoD: 0,
-        zelleD: 0,
+        zelle: 0,   // ✔ ESTE ES EL NOMBRE REAL
+
         // VUELTOS (ya vienen negativos)
         vueltoP: 0,
         vueltoBs: 0,
         vueltoD: 0
       };
+
       for (const p of pagosDocs) {
+
         // ============================
         // PAGOS
         // ============================
         if (p.operacion === "PAGO") {
           pagos.efectivoP += Number(p.efectivoP || 0);
           pagos.transferenciaP += Number(p.transferenciaP || 0);
+
           pagos.efectivoBs += Number(p.efectivoBs || 0);
           pagos.transferenciaBs += Number(p.transferenciaBs || 0);
           pagos.puntoBs += Number(p.puntoBs || 0);
           pagos.pagomovilBs += Number(p.pagomovilBs || 0);
+
           pagos.efectivoD += Number(p.efectivoD || 0);
-          pagos.zelleD += Number(p.zelleD || 0);
+          pagos.zelle += Number(p.zelle || 0);   // ✔ CORREGIDO
         }
+
         // ============================
         // VUELTOS (YA NEGATIVOS)
         // ============================
@@ -155,6 +174,7 @@ router.get("/reporte/:desde/:hasta", async (req, res) => {
           pagos.vueltoD += Number(p.efectivoD || 0);
         }
       }
+
       // ============================
       // 4. ARMAR REPORTE
       // ============================
@@ -165,12 +185,15 @@ router.get("/reporte/:desde/:hasta", async (req, res) => {
         pagos
       });
     }
+
     res.json({ ok: true, reporte });
+
   } catch (error) {
     console.log("ERROR REPORTE:", error);
     res.status(500).json({ ok: false, msg: "Error generando reporte" });
   }
 });
+
 
 
 
