@@ -96,4 +96,30 @@ router.delete("/:id", async (req, res) => {
   }
 });
 
+// CREAR USUARIO
+router.post("/", async (req, res) => {
+  try {
+    const { nombre, usuario, clave, rol } = req.body;
+    if (!nombre || !usuario || !clave || !rol) {
+      return res.status(400).json({ ok: false, mensaje: "Todos los campos son obligatorios" });
+    }
+    // Verificar si el usuario ya existe
+    const existe = await Usuario.findOne({ usuario });
+    if (existe) {
+      return res.status(400).json({ ok: false, mensaje: "El usuario ya existe" });
+    }
+    // Crear usuario
+    const nuevo = await Usuario.create({ nombre, usuario, clave, rol });
+    // Devolver el usuario creado
+    res.json({
+      ok: true,
+      usuario: nuevo
+    });
+  } catch (error) {
+    console.error("Error creando usuario:", error);
+    res.status(500).json({ ok: false, mensaje: "Error creando usuario" });
+  }
+});
+
+
 export default router;
