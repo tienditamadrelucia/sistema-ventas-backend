@@ -35,36 +35,21 @@ router.get("/", async (req, res) => {
     for (const p of productos) {
       const stockInicial = Number(p.stock) || 0;
 
-      // ObjectId REAL
       const productoId = new mongoose.Types.ObjectId(p._id);
 
-      // 2. Entradas
       const entradas = await Entrada.aggregate([
-        {
-          $match: {
-            productoId: productoId,
-            fecha: { $lte: fin }
-          }
-        },
+        { $match: { productoId, fecha: { $lte: fin } } },
         { $group: { _id: null, total: { $sum: "$cantidad" } } }
       ]);
 
-      // 3. Salidas
       const salidas = await Salida.aggregate([
-        {
-          $match: {
-            productoId: productoId,
-            fecha: { $lte: fin }
-          }
-        },
+        { $match: { productoId, fecha: { $lte: fin } } },
         { $group: { _id: null, total: { $sum: "$cantidad" } } }
       ]);
 
-      // 4. Totales SEGUROS (si no hay datos → 0)
       const totalEntradas = entradas?.[0]?.total || 0;
       const totalSalidas = salidas?.[0]?.total || 0;
 
-      // 5. Stock real
       const stockReal = stockInicial + totalEntradas - totalSalidas;
 
       productosConStock.push({
@@ -73,7 +58,6 @@ router.get("/", async (req, res) => {
       });
     }
 
-    // 6. Tomas (si no hay → [])
     const tomas = await Inventario.find({
       fecha: inicio,
       categoria
@@ -90,6 +74,7 @@ router.get("/", async (req, res) => {
     res.status(500).json({ ok: false, mensaje: "Error cargando inventario" });
   }
 });
+
 /*
   POST /api/inventario
   Crea una toma nueva
@@ -188,8 +173,7 @@ router.get("/stock-real/:codigo", async (req, res) => {
     }
 
     // Convertir _id a ObjectId REAL
-    const productoId = new mongoose.Types.ObjectId(p._id.toString());
-
+    const productoId = new mongoose.Types.ObjectId(producto._id);
 
     // 2. Entradas
     const entradas = await Entrada.aggregate([
