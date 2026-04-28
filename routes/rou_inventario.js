@@ -3,6 +3,8 @@ import Inventario from "../models/dbInventario.js";
 import Producto from "../models/Producto.js";
 import Entrada from "../models/Entrada.js";
 import Salida from "../models/dbSalidas.js";
+import mongoose from "mongoose";
+import express from "express";
 
 // Si ya tienes ventas, importa:
 //import Venta from "../models/ventas.js";
@@ -22,47 +24,60 @@ router.get("/", async (req, res) => {
       return res.status(400).json({ ok: false, mensaje: "Faltan parámetros" });
     }
 
-    // Productos de la categoría
+    const inicio = new Date(fecha + "T00:00:00");
+    const fin = new Date(fecha + "T23:59:59");
+
+    // 1. Buscar productos por categoría
     const productos = await Producto.find({ categoria });
 
-    // Fecha exacta
-    const inicio = new Date(fecha);
-    inicio.setHours(0, 0, 0, 0);
-
-    const fin = new Date(fecha);
-    fin.setHours(23, 59, 59, 999);
-
-    // Tomas existentes para esa fecha
-    const tomas = await Inventario.find({
-      fecha: { $gte: inicio, $lte: fin }
-    });
-
-    // Calcular stock final del sistema
     const productosConStock = [];
 
     for (const p of productos) {
-  const stockInicial = Number(p.stock) || 0;
+      const stockInicial = Number(p.stock) || 0;
 
-  const entradas = await Entrada.aggregate([
-    { $match: { productoId: p._id.toString(), fecha: { $lte: fin } } },
-    { $group: { _id: null, total: { $sum: "$cantidad" } } }
-  ]);
+      // Convertir _id a ObjectId REAL
+      const productoId = new mongoose.Types.ObjectId(p._id);
 
-  const salidas = await Salida.aggregate([
-    { $match: { productoId: p._id.toString(), fecha: { $lte: fin } } },
-    { $group: { _id: null, total: { $sum: "$cantidad" } } }
-  ]);
+      // 2. Entradas hasta la fecha
+      const entradas = await Entrada.aggregate([
+        {
+          $match: {
+            productoId: productoId,
+            fecha: { $lte: fin }
+          }
+        },
+        { $group: { _id: null, total: { $sum: "$cantidad" } } }
+      ]);
 
-  const totalEntradas = entradas[0]?.total || 0;
-  const totalSalidas = salidas[0]?.total || 0;
+      // 3. Salidas hasta la fecha
+      const salidas = await Salida.aggregate([
+        {
+          $match: {
+            productoId: productoId,
+            fecha: { $lte: fin }
+          }
+        },
+        { $group: { _id: null, total: { $sum: "$cantidad" } } }
+      ]);
 
-  const stockReal = stockInicial + totalEntradas - totalSalidas;
+      // 4. Totales seguros
+      const totalEntradas = entradas.length > 0 ? entradas[0].total : 0;
+      const totalSalidas = salidas.length > 0 ? salidas[0].total : 0;
 
-  productosConStock.push({
-    ...p._doc,
-    stockReal
-  });
-}
+      // 5. Stock real del sistema
+      const stockReal = stockInicial + totalEntradas - totalSalidas;
+
+      productosConStock.push({
+        ...p._doc,
+        stockReal
+      });
+    }
+
+    // 6. Buscar tomas de inventario
+    const tomas = await Inventario.find({
+      fecha: inicio,
+      categoria
+    });
 
     res.json({
       ok: true,
@@ -71,7 +86,7 @@ router.get("/", async (req, res) => {
     });
 
   } catch (error) {
-    console.error("Error GET inventario:", error);
+    console.error("Error en GET /api/inventario:", error);
     res.status(500).json({ ok: false, mensaje: "Error cargando inventario" });
   }
 });
@@ -166,23 +181,46 @@ router.post("/guardar", async (req, res) => {
 router.get("/stock-real/:codigo", async (req, res) => {
   try {
     const codigo = req.params.codigo;
+
     // 1. Buscar el producto por código
     const producto = await Producto.findOne({ codigo });
     if (!producto) {
       return res.status(404).json({ ok: false, mensaje: "Producto no encontrado" });
     }
-    // 2. Usar SIEMPRE productoId para entradas y salidas
+
+    // Convertir _id a ObjectId REAL
+    const productoId = new mongoose.Types.ObjectId(producto._id);
+
+    // 2. Entradas
     const entradas = await Entrada.aggregate([
-      { $match: { productoId: producto._id.toString() } },
+      { 
+        $match: { 
+          productoId: productoId,
+          fecha: { $lte: new Date() }   // o la fecha que quieras
+        } 
+      },
       { $group: { _id: null, total: { $sum: "$cantidad" } } }
     ]);
+
+    // 3. Salidas
     const salidas = await Salida.aggregate([
-      { $match: { productoId: producto._id.toString() } },
+      { 
+        $match: { 
+          productoId: productoId,
+          fecha: { $lte: new Date() }
+        } 
+      },
       { $group: { _id: null, total: { $sum: "$cantidad" } } }
     ]);
-    const totalEntradas = entradas[0]?.total || 0;
-    const totalSalidas = salidas[0]?.total || 0;
+
+    // 4. Totales seguros
+    const totalEntradas = entradas.length > 0 ? entradas[0].total : 0;
+    const totalSalidas  = salidas.length > 0 ? salidas[0].total  : 0;
+
+    // 5. Stock real
     const stockReal = producto.stock + totalEntradas - totalSalidas;
+
+    // 6. Respuesta
     res.json({
       ok: true,
       codigo,
@@ -191,6 +229,7 @@ router.get("/stock-real/:codigo", async (req, res) => {
       totalSalidas,
       stockReal
     });
+
   } catch (error) {
     console.error("Error calculando stock real:", error);
     res.status(500).json({ ok: false, mensaje: "Error calculando stock real" });
