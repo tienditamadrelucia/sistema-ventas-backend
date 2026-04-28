@@ -3,6 +3,7 @@ import Inventario from "../models/dbInventario.js";
 import Producto from "../models/Producto.js";
 import Entrada from "../models/Entrada.js";
 import Salida from "../models/dbSalidas.js";
+import Vendidos from "../models/dbVendidos.js";
 import mongoose from "mongoose";
 
 
@@ -21,58 +22,18 @@ router.get("/", async (req, res) => {
   try {
     const { categoria } = req.query;
 
-    if (!categoria) {
-      return res.status(400).json({ ok: false, mensaje: "Falta la categoría" });
-    }
-
-    // 1. Traer TODOS los productos de esa categoría
     const productos = await Producto.find({ categoria });
 
-    // 2. Calcular stockReal para cada producto
-    const productosConStock = [];
-
-    for (const p of productos) {
-      const stockInicial = Number(p.stock) || 0;
-
-      const productoId = p._id;
-
-      // Entradas
-      const entradas = await Entrada.aggregate([
-        { $match: { productoId } },
-        { $group: { _id: null, total: { $sum: "$cantidad" } } }
-      ]);
-
-      // Salidas
-      const salidas = await Salida.aggregate([
-        { $match: { productoId } },
-        { $group: { _id: null, total: { $sum: "$cantidad" } } }
-      ]);
-
-      const totalEntradas = entradas?.[0]?.total || 0;
-      const totalSalidas = salidas?.[0]?.total || 0;
-
-      const stockReal = stockInicial + totalEntradas - totalSalidas;
-
-      // 3. Guardar el producto COMPLETO + stockReal
-      productosConStock.push({
-        ...p.toObject(),
-        stockReal
-      });
-    }
-
-    // 4. Enviar todo al frontend
     res.json({
       ok: true,
-      productos: productosConStock
+      productos
     });
-    console.log("PRODUCTO ORIGINAL:", p);
-    console.log("PRODUCTO TOOBJECT:", p.toObject());
-
   } catch (error) {
-    console.error("Error en GET /api/inventario:", error);
+    console.error(error);
     res.status(500).json({ ok: false, mensaje: "Error cargando inventario" });
   }
 });
+
 
 
 /*
