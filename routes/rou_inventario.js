@@ -54,6 +54,19 @@ router.get("/", async (req, res) => {
   }
 });
 
+router.get("/buscar", async (req, res) => {
+  try {
+    const { fecha, categoria } = req.query;
+    const inventario = await Inventario.find({ fecha, categoria });
+    res.json({
+      ok: true,
+      inventario
+    });
+  } catch (error) {
+    console.error("ERROR BUSCAR INVENTARIO:", error);
+    res.status(500).json({ ok: false, mensaje: "Error buscando inventario" });
+  }
+});
 
 
 

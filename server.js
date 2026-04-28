@@ -3,7 +3,6 @@ import cors from "cors";
 import { conectarDB } from "./db/conexion.js";
 //import loginRoutes from "./routes/login.js";
 
-console.log("🔥 Cargando archivo:", new URL("./routes/usuarios.js", import.meta.url).pathname);
 import usuarios from "./routes/usuarios.js";
 import categorias from "./routes/categorias.js";
 import productos from "./routes/productos.js";
