@@ -19,32 +19,32 @@ const router = express.Router();
 */
 router.get("/", async (req, res) => {
   try {
-    const { fecha, categoria } = req.query;
+    const { categoria } = req.query;
 
-    if (!fecha || !categoria) {
-      return res.status(400).json({ ok: false, mensaje: "Faltan parámetros" });
+    if (!categoria) {
+      return res.status(400).json({ ok: false, mensaje: "Falta la categoría" });
     }
 
-    const inicio = new Date(fecha + "T00:00:00");
-    const fin = new Date(fecha + "T23:59:59");
-
-    // 1. Productos por categoría
+    // 1. Traer TODOS los productos de esa categoría
     const productos = await Producto.find({ categoria });
 
+    // 2. Calcular stockReal para cada producto
     const productosConStock = [];
 
     for (const p of productos) {
       const stockInicial = Number(p.stock) || 0;
 
-      const productoId = new mongoose.Types.ObjectId(p._id);
+      const productoId = p._id;
 
+      // Entradas
       const entradas = await Entrada.aggregate([
-        { $match: { productoId, fecha: { $lte: fin } } },
+        { $match: { productoId } },
         { $group: { _id: null, total: { $sum: "$cantidad" } } }
       ]);
 
+      // Salidas
       const salidas = await Salida.aggregate([
-        { $match: { productoId, fecha: { $lte: fin } } },
+        { $match: { productoId } },
         { $group: { _id: null, total: { $sum: "$cantidad" } } }
       ]);
 
@@ -53,21 +53,17 @@ router.get("/", async (req, res) => {
 
       const stockReal = stockInicial + totalEntradas - totalSalidas;
 
+      // 3. Guardar el producto COMPLETO + stockReal
       productosConStock.push({
-        ...p._doc,
+        ...p.toObject(),
         stockReal
       });
     }
 
-    const tomas = await Inventario.find({
-      fecha: inicio,
-      categoria
-    }) || [];
-
+    // 4. Enviar todo al frontend
     res.json({
       ok: true,
-      productos: productosConStock,
-      tomas
+      productos: productosConStock
     });
 
   } catch (error) {
@@ -75,6 +71,7 @@ router.get("/", async (req, res) => {
     res.status(500).json({ ok: false, mensaje: "Error cargando inventario" });
   }
 });
+
 
 /*
   POST /api/inventario
@@ -165,7 +162,7 @@ router.post("/guardar", async (req, res) => {
 
 router.get("/stock-real/:codigo", async (req, res) => {
   try {
-    const codigo = req.params.codigo;
+    const codigo = Number(req.params.codigo);
 
     // 1. Buscar el producto por código
     const producto = await Producto.findOne({ codigo });
@@ -173,43 +170,31 @@ router.get("/stock-real/:codigo", async (req, res) => {
       return res.status(404).json({ ok: false, mensaje: "Producto no encontrado" });
     }
 
-    // Convertir _id a ObjectId REAL
-    const productoId = new mongoose.Types.ObjectId(producto._id);
+    const productoId = producto._id;
 
     // 2. Entradas
     const entradas = await Entrada.aggregate([
-      { 
-        $match: { 
-          productoId: productoId,
-          fecha: { $lte: new Date() }   // o la fecha que quieras
-        } 
-      },
+      { $match: { productoId } },
       { $group: { _id: null, total: { $sum: "$cantidad" } } }
     ]);
 
     // 3. Salidas
     const salidas = await Salida.aggregate([
-      { 
-        $match: { 
-          productoId: productoId,
-          fecha: { $lte: new Date() }
-        } 
-      },
+      { $match: { productoId } },
       { $group: { _id: null, total: { $sum: "$cantidad" } } }
     ]);
 
-    // 4. Totales seguros
-    const totalEntradas = entradas.length > 0 ? entradas[0].total : 0;
-    const totalSalidas  = salidas.length > 0 ? salidas[0].total  : 0;
+    const totalEntradas = entradas?.[0]?.total || 0;
+    const totalSalidas = salidas?.[0]?.total || 0;
 
-    // 5. Stock real
-    const stockReal = producto.stock + totalEntradas - totalSalidas;
+    // 4. Stock real
+    const stockReal = (producto.stock || 0) + totalEntradas - totalSalidas;
 
-    // 6. Respuesta
+    // 5. Respuesta
     res.json({
       ok: true,
       codigo,
-      stockInicial: producto.stock,
+      stockInicial: producto.stock || 0,
       totalEntradas,
       totalSalidas,
       stockReal
@@ -220,6 +205,7 @@ router.get("/stock-real/:codigo", async (req, res) => {
     res.status(500).json({ ok: false, mensaje: "Error calculando stock real" });
   }
 });
+
 
 
 export default router;
