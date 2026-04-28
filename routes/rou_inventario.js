@@ -21,18 +21,39 @@ const router = express.Router();
 router.get("/", async (req, res) => {
   try {
     const { categoria } = req.query;
-
     const productos = await Producto.find({ categoria });
-
+    const productosReales = [];
+    for (const p of productos) {
+      const productoId = p._id;
+      const entradas = await Entrada.aggregate([
+        { $match: { productoId } },
+        { $group: { _id: null, total: { $sum: "$cantidad" } } }
+      ]);
+      const salidas = await Salida.aggregate([
+        { $match: { productoId } },
+        { $group: { _id: null, total: { $sum: "$cantidad" } } }
+      ]);
+      const vendidos = await Venta.aggregate([
+        { $match: { productoId } },
+        { $group: { _id: null, total: { $sum: "$cantidad" } } }
+      ]);
+      productosReales.push({
+        ...p.toObject(),
+        totalEntradas: entradas?.[0]?.total || 0,
+        totalSalidas: salidas?.[0]?.total || 0,
+        totalVendidos: vendidos?.[0]?.total || 0
+      });
+    }
     res.json({
       ok: true,
-      productos
+      productos: productosReales
     });
   } catch (error) {
     console.error(error);
     res.status(500).json({ ok: false, mensaje: "Error cargando inventario" });
   }
 });
+
 
 
 
