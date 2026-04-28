@@ -41,41 +41,28 @@ router.get("/", async (req, res) => {
     const productosConStock = [];
 
     for (const p of productos) {
-      const stockInicial = Number(p.stock) || 0;
+  const stockInicial = Number(p.stock) || 0;
 
-      const entradas = await Entrada.aggregate([
-        { $match: { productoId: p._id.toString(), fecha: { $lte: fin } } },
-        { $group: { _id: null, total: { $sum: "$cantidad" } } }
-      ]);
+  const entradas = await Entrada.aggregate([
+    { $match: { productoId: p._id.toString(), fecha: { $lte: fin } } },
+    { $group: { _id: null, total: { $sum: "$cantidad" } } }
+  ]);
 
-      const salidas = await Salida.aggregate([
-        { $match: { productoId: p._id.toString(), fecha: { $lte: fin } } },
-        { $group: { _id: null, total: { $sum: "$cantidad" } } }
-      ]);
+  const salidas = await Salida.aggregate([
+    { $match: { productoId: p._id.toString(), fecha: { $lte: fin } } },
+    { $group: { _id: null, total: { $sum: "$cantidad" } } }
+  ]);
 
-      //let ventas = [];
-      //try {
-        //ventas = await Venta.aggregate([
-          //{ $match: { productoId: p.codigo, fecha: { $lte: fin } } },
-          //{ $group: { _id: null, total: { $sum: "$cantidad" } } }
-        //]);
-      //} catch (e) {
-      //  ventas = [];
-      //}
+  const totalEntradas = entradas[0]?.total || 0;
+  const totalSalidas = salidas[0]?.total || 0;
 
-      const totalEntradas = entradas[0]?.total || 0;
-      const totalSalidas = salidas[0]?.total || 0;
-      const totalVentas = 0;
-      //const totalVentas = ventas[0]?.total || 0;
+  const stockReal = stockInicial + totalEntradas - totalSalidas;
 
-      const stockFinalSistema =
-        stockInicial + totalEntradas - totalSalidas - totalVentas;
-
-      productosConStock.push({
-        ...p._doc,
-        stockFinalSistema
-      });
-    }
+  productosConStock.push({
+    ...p._doc,
+    stockReal
+  });
+}
 
     res.json({
       ok: true,
@@ -175,5 +162,40 @@ router.post("/guardar", async (req, res) => {
     res.status(500).json({ ok: false, error: error.message });
   }
 });
+
+router.get("/stock-real/:codigo", async (req, res) => {
+  try {
+    const codigo = req.params.codigo;
+    // 1. Buscar el producto por código
+    const producto = await Producto.findOne({ codigo });
+    if (!producto) {
+      return res.status(404).json({ ok: false, mensaje: "Producto no encontrado" });
+    }
+    // 2. Usar SIEMPRE productoId para entradas y salidas
+    const entradas = await Entrada.aggregate([
+      { $match: { productoId: producto._id.toString() } },
+      { $group: { _id: null, total: { $sum: "$cantidad" } } }
+    ]);
+    const salidas = await Salida.aggregate([
+      { $match: { productoId: producto._id.toString() } },
+      { $group: { _id: null, total: { $sum: "$cantidad" } } }
+    ]);
+    const totalEntradas = entradas[0]?.total || 0;
+    const totalSalidas = salidas[0]?.total || 0;
+    const stockReal = producto.stock + totalEntradas - totalSalidas;
+    res.json({
+      ok: true,
+      codigo,
+      stockInicial: producto.stock,
+      totalEntradas,
+      totalSalidas,
+      stockReal
+    });
+  } catch (error) {
+    console.error("Error calculando stock real:", error);
+    res.status(500).json({ ok: false, mensaje: "Error calculando stock real" });
+  }
+});
+
 
 export default router;
