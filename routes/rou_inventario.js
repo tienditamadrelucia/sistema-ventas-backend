@@ -33,7 +33,7 @@ router.get("/", async (req, res) => {
         { $match: { productoId } },
         { $group: { _id: null, total: { $sum: "$cantidad" } } }
       ]);
-      const vendidos = await Venta.aggregate([
+      const vendidos = await Vendidos.aggregate([
         { $match: { productoId } },
         { $group: { _id: null, total: { $sum: "$cantidad" } } }
       ]);
