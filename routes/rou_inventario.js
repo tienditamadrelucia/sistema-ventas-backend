@@ -4,7 +4,7 @@ import Producto from "../models/Producto.js";
 import Entrada from "../models/Entrada.js";
 import Salida from "../models/dbSalidas.js";
 import mongoose from "mongoose";
-import express from "express";
+
 
 // Si ya tienes ventas, importa:
 //import Venta from "../models/ventas.js";
