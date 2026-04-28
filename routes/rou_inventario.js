@@ -206,6 +206,17 @@ router.get("/stock-real/:codigo", async (req, res) => {
   }
 });
 
+router.get("/debug-productos", async (req, res) => {
+  try {
+    const productos = await Producto.find({}); // ← TODOS los productos, TODOS los campos
+    console.log("DEBUG PRODUCTOS:", productos);
+    res.json(productos);
+  } catch (error) {
+    console.error("ERROR DEBUG PRODUCTOS:", error);
+    res.status(500).json({ ok: false, mensaje: "Error debug productos" });
+  }
+});
+
 
 
 export default router;
