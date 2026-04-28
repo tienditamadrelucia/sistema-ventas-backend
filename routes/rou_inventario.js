@@ -9,6 +9,7 @@ import mongoose from "mongoose";
 // Si ya tienes ventas, importa:
 //import Venta from "../models/ventas.js";
 // Si NO existe ventas aún, comenta esta línea
+console.log(">>> RUTA INVENTARIO NUEVA CARGADA <<<");
 
 const router = express.Router();
 
