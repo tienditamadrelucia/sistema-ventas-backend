@@ -65,6 +65,8 @@ router.get("/", async (req, res) => {
       ok: true,
       productos: productosConStock
     });
+    console.log("PRODUCTO ORIGINAL:", p);
+    console.log("PRODUCTO TOOBJECT:", p.toObject());
 
   } catch (error) {
     console.error("Error en GET /api/inventario:", error);
