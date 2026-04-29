@@ -94,6 +94,7 @@ router.get("/buscar", async (req, res) => {
 
 
 
+
 /*
   POST /api/inventario
   Crea una toma nueva
