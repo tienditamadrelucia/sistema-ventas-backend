@@ -55,26 +55,43 @@ router.get("/", async (req, res) => {
 });
 
 router.get("/buscar", async (req, res) => {
-  const { fecha, categoria } = req.query;
-  const inventario = await Inventario.find({ fecha, categoria });
-  // Traer los productos completos
-  const productosIds = inventario.map(i => i.productoId);
-  const productos = await Producto.find({ _id: { $in: productosIds } });
-  // Unir inventario + producto
-  const resultado = inventario.map(item => {
-    const prod = productos.find(p => p._id.toString() === item.productoId);
-    return {
-      productoId: item.productoId,
-      codigo: prod?.codigo,
-      descripcion: prod?.descripcion,
-      foto: prod?.foto,
-      stockReal: item.stockReal,
-      stockFisico: item.stockFisico,
-      observacion: item.observacion
-    };
-  });
-  res.json(resultado);
+  try {
+    const { fecha, categoria } = req.query;
+
+    // 1. Buscar inventario guardado
+    const inventario = await Inventario.find({ fecha, categoria });
+
+    if (inventario.length === 0) {
+      return res.json([]); // No hay inventario guardado
+    }
+
+    // 2. Buscar productos relacionados
+    const productosIds = inventario.map(i => i.productoId);
+
+    const productos = await Producto.find({ _id: { $in: productosIds } });
+
+    // 3. Unir inventario + productos
+    const resultado = inventario.map(item => {
+      const prod = productos.find(p => p._id.toString() === item.productoId);
+
+      return {
+        productoId: item.productoId,
+        codigo: prod?.codigo || "",
+        descripcion: prod?.descripcion || "",
+        foto: prod?.foto || "",
+        stockReal: item.stockReal,
+        stockFisico: item.stockFisico,
+        observacion: item.observacion
+      };
+    });
+
+    res.json(resultado);
+
+  } catch (error) {
+    res.status(500).json({ ok: false, error: error.message });
+  }
 });
+
 
 
 /*
