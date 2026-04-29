@@ -143,7 +143,7 @@ router.post("/guardar", async (req, res) => {
       fecha,
       categoria,
       productoId: item.productoId,
-      stockSistema: item.stockSistema,
+      stockReal: item.stockSistema,
       stockFisico: item.stockFisico,
       observacion: item.observacion || ""
     }));
