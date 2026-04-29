@@ -55,19 +55,26 @@ router.get("/", async (req, res) => {
 });
 
 router.get("/buscar", async (req, res) => {
-  try {
-    const { fecha, categoria } = req.query;
-    const inventario = await Inventario.find({ fecha, categoria });
-    res.json({
-      ok: true,
-      inventario
-    });
-  } catch (error) {
-    console.error("ERROR BUSCAR INVENTARIO:", error);
-    res.status(500).json({ ok: false, mensaje: "Error buscando inventario" });
-  }
+  const { fecha, categoria } = req.query;
+  const inventario = await Inventario.find({ fecha, categoria });
+  // Traer los productos completos
+  const productosIds = inventario.map(i => i.productoId);
+  const productos = await Producto.find({ _id: { $in: productosIds } });
+  // Unir inventario + producto
+  const resultado = inventario.map(item => {
+    const prod = productos.find(p => p._id.toString() === item.productoId);
+    return {
+      productoId: item.productoId,
+      codigo: prod?.codigo,
+      descripcion: prod?.descripcion,
+      foto: prod?.foto,
+      stockReal: item.stockReal,
+      stockFisico: item.stockFisico,
+      observacion: item.observacion
+    };
+  });
+  res.json(resultado);
 });
-
 
 
 /*
