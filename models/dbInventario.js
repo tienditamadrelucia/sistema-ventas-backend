@@ -5,7 +5,7 @@ const InventarioSchema = new mongoose.Schema({
   categoria: { type: String, required: true},             // categoria
   productoId: { type: String, required: true },   // Código o ID del producto
   stockReal: { type: Number, required: true }, // Stock final del sistema en esa fecha
-  stockFisico: { type: Number, required: true },  // Toma física realizada
+  stockFisico: { type: mongoose.Schema.Types.Mixed, default: "" },  // Toma física realizada
   observacion: { type: String, default: "" }      // Nota opcional
 }, { timestamps: true });
 

@@ -57,23 +57,17 @@ router.get("/", async (req, res) => {
 router.get("/buscar", async (req, res) => {
   try {
     const { fecha, categoria } = req.query;
-
     // 1. Buscar inventario guardado
     const inventario = await Inventario.find({ fecha, categoria });
-
     if (inventario.length === 0) {
       return res.json([]); // No hay inventario guardado
     }
-
     // 2. Buscar productos relacionados
     const productosIds = inventario.map(i => i.productoId);
-
     const productos = await Producto.find({ _id: { $in: productosIds } });
-
     // 3. Unir inventario + productos
     const resultado = inventario.map(item => {
       const prod = productos.find(p => p._id.toString() === item.productoId);
-
       return {
         productoId: item.productoId,
         codigo: prod?.codigo || "",
@@ -84,16 +78,11 @@ router.get("/buscar", async (req, res) => {
         observacion: item.observacion
       };
     });
-
     res.json(resultado);
-
   } catch (error) {
     res.status(500).json({ ok: false, error: error.message });
   }
 });
-
-
-
 
 /*
   POST /api/inventario
@@ -169,7 +158,7 @@ router.post("/guardar", async (req, res) => {
       categoria,
       productoId: item.productoId,
       stockReal: item.stockReal,
-      stockFisico: item.stockFisico,
+      stockFisico: item.stockFisico === "" ? "" : Number(item.stockFisico),
       observacion: item.observacion || ""
     }));
 
