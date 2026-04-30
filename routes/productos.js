@@ -3,15 +3,44 @@ import Producto from "../models/Producto.js";
 
 const router = express.Router();
 
+// ⭐ FUNCIÓN PARA ORDENAR TODA LA DB
+async function ordenarProductosDB() {
+  const productos = await Producto.find();
+
+  // ⭐ ORDENAR PRIMERO POR CÓDIGO, LUEGO POR CATEGORÍA
+  productos.sort((a, b) => {
+    const codA = Number(a.codigo);
+    const codB = Number(b.codigo);
+
+    if (codA !== codB) {
+      return codA - codB; // primero código
+    }
+
+    // si el código es igual, ordenar por categoría
+    if (a.categoria < b.categoria) return -1;
+    if (a.categoria > b.categoria) return 1;
+    return 0;
+  });
+
+  // Guardar el orden en un campo "orden"
+  for (let i = 0; i < productos.length; i++) {
+    await Producto.findByIdAndUpdate(productos[i]._id, { orden: i });
+  }
+
+  console.log("🔥 Productos ordenados por CÓDIGO y luego por CATEGORÍA");
+}
+
+
 // Obtener todos los productos
 router.get("/", async (req, res) => {
   try {
-    const productos = await Producto.find();
+    const productos = await Producto.find().sort({ orden: 1 });
     res.json(productos);
   } catch (error) {
     res.status(500).json({ ok: false, error: "Error obteniendo productos" });
   }
 });
+
 
 // Obtener el próximo código disponible
 router.get("/proximo-codigo", async (req, res) => {
@@ -31,12 +60,13 @@ router.get("/proximo-codigo", async (req, res) => {
 // Obtener productos por categoría (solo UNA ruta)
 router.get("/por-categoria/:codigo", async (req, res) => {
   try {
-    const productos = await Producto.find({ categoria: req.params.codigo });
+    const productos = await Producto.find({ categoria: req.params.codigo }).sort({ orden: 1 });
     res.json(productos);
   } catch (error) {
     res.status(500).json({ ok: false, error: "Error obteniendo productos por categoría" });
   }
 });
+
 
 // Crear producto
 router.post("/", async (req, res) => {
@@ -50,11 +80,18 @@ router.post("/", async (req, res) => {
     });
 
     await nuevo.save();
+
+    // ⭐ ORDENAR TODA LA DB DESPUÉS DE CREAR UN PRODUCTO
+    await ordenarProductosDB();
+
     res.json({ ok: true, producto: nuevo });
   } catch (error) {
     res.status(500).json({ ok: false, error: "Error creando producto" });
   }
 });
+
+
+
 
 // Actualizar producto
 router.put("/:id", async (req, res) => {
