@@ -60,7 +60,7 @@ router.get("/proximo-codigo", async (req, res) => {
 // Obtener productos por categoría (solo UNA ruta)
 router.get("/por-categoria/:codigo", async (req, res) => {
   try {
-    const productos = await Producto.find({ categoria: req.params.codigo }).sort({ orden: 1 });
+    const productos = await Producto.find({ categoria: req.params.codigo });
     res.json(productos);
   } catch (error) {
     res.status(500).json({ ok: false, error: "Error obteniendo productos por categoría" });
