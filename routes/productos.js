@@ -3,23 +3,20 @@ import Producto from "../models/Producto.js";
 
 const router = express.Router();
 
-// ⭐ FUNCIÓN PARA ORDENAR TODA LA DB
+// ⭐ FUNCIÓN PARA ORDENAR TODA LA DB COMO TÚ QUIERES
 async function ordenarProductosDB() {
   const productos = await Producto.find();
 
-  // ⭐ ORDENAR PRIMERO POR CÓDIGO, LUEGO POR CATEGORÍA
+  // ⭐ ORDENAR PRIMERO POR CATEGORÍA, LUEGO POR CÓDIGO
   productos.sort((a, b) => {
-    const codA = Number(a.codigo);
-    const codB = Number(b.codigo);
-
-    if (codA !== codB) {
-      return codA - codB; // primero código
-    }
-
-    // si el código es igual, ordenar por categoría
+    // 1. Ordenar por categoría
     if (a.categoria < b.categoria) return -1;
     if (a.categoria > b.categoria) return 1;
-    return 0;
+
+    // 2. Si la categoría es igual, ordenar por código numérico
+    const codA = Number(a.codigo);
+    const codB = Number(b.codigo);
+    return codA - codB;
   });
 
   // Guardar el orden en un campo "orden"
@@ -27,14 +24,18 @@ async function ordenarProductosDB() {
     await Producto.findByIdAndUpdate(productos[i]._id, { orden: i });
   }
 
-  console.log("🔥 Productos ordenados por CÓDIGO y luego por CATEGORÍA");
+  console.log("🔥 Productos ordenados por CATEGORÍA y luego por CÓDIGO");
 }
+
 
 
 // Obtener todos los productos
 router.get("/", async (req, res) => {
   try {
-    const productos = await Producto.find().sort({ orden: 1 });
+    const productos = await Producto.find().sort({ 
+      categoria: 1,
+      codigo: 1
+    });
     res.json(productos);
   } catch (error) {
     res.status(500).json({ ok: false, error: "Error obteniendo productos" });
