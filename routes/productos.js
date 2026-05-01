@@ -93,9 +93,6 @@ router.post("/", async (req, res) => {
   }
 });
 
-
-
-
 // Actualizar producto
 router.put("/:id", async (req, res) => {
   try {
