@@ -122,78 +122,67 @@ router.get("/:id", async (req, res) => {
 });
 
 // Eliminar producto
-//router.delete("/:id", async (req, res) => {
-//  try {
-  //  console.log("➡️ Eliminando producto ID:", req.params.id);
-    //const { id } = req.params;
-    //const producto = await Producto.findById(id);
-    //console.log("📌 Producto encontrado:", producto);
-    //if (!producto) {
-     // console.log("❌ Producto NO encontrado");
-      //return res.status(404).json({ ok: false, error: "Producto no encontrado" });
-    //}
-
-    // VALIDAR VENTAS ASOCIADAS
-    //const ventas = await Venta.find({ productoId: id });
-    ///console.log("📌 Ventas asociadas:", ventas.length);
-    //if (ventas.length > 0) {
-      //return res.status(400).json({
-       // ok: false,
-        //error: "No se puede eliminar el producto porque tiene ventas asociadas"
-     // });
-   // }
-
-    // VALIDAR ENTRADAS ASOCIADAS
-    //const entradas = await Entrada.find({ productoId: id });
-    //console.log("📌 Entradas asociadas:", entradas.length);
-    //if (entradas.length > 0) {
-     // return res.status(400).json({
-      //  ok: false,
-       // error: "No se puede eliminar el producto porque tiene entradas asociadas"
-      //});
-   // }
-
-    // VALIDAR SALIDAS ASOCIADAS
-    //const salidas = await Salida.find({ productoId: id });
-    //console.log("📌 Salidas asociadas:", salidas.length);
-    //if (salidas.length > 0) {
-     // return res.status(400).json({
-      //  ok: false,
-       // error: "No se puede eliminar el producto porque tiene salidas asociadas"
-      //});
-   // }
-    
-
-    // SI NO TIENE RELACIONES → ELIMINAR
-    //await Producto.findByIdAndDelete(id);
-    //console.log("✅ Producto eliminado correctamente");
-    //res.json({ ok: true });
-  //} catch (error) {
-    //console.error("🔥 ERROR REAL ELIMINANDO PRODUCTO:", error);
-    //console.error("Error eliminando producto:", error);
-    //res.status(500).json({ ok: false, error: "Error eliminando producto" });
- // }
-//});
 router.delete("/:id", async (req, res) => {
   try {
-    console.log("🟢 LLEGÓ AL DELETE con id:", req.params.id);
+    console.log("➡️ Eliminando producto ID:", req.params.id);
 
     const { id } = req.params;
 
+    // 1. Verificar que el producto exista
     const producto = await Producto.findById(id);
+    console.log("📌 Producto encontrado:", producto);
+
     if (!producto) {
+      console.log("❌ Producto NO encontrado");
       return res.status(404).json({ ok: false, error: "Producto no encontrado" });
     }
 
+    // 2. Validar ventas asociadas
+    const ventas = await Venta.find({ productoId: id });
+    console.log("📌 Ventas asociadas:", ventas.length);
+
+    if (ventas.length > 0) {
+      return res.status(400).json({
+        ok: false,
+        error: "No se puede eliminar el producto porque tiene ventas asociadas"
+      });
+    }
+
+    // 3. Validar entradas asociadas
+    const entradas = await Entrada.find({ productoId: id });
+    console.log("📌 Entradas asociadas:", entradas.length);
+
+    if (entradas.length > 0) {
+      return res.status(400).json({
+        ok: false,
+        error: "No se puede eliminar el producto porque tiene entradas asociadas"
+      });
+    }
+
+    // 4. Validar salidas asociadas
+    const salidas = await Salida.find({ productoId: id });
+    console.log("📌 Salidas asociadas:", salidas.length);
+
+    if (salidas.length > 0) {
+      return res.status(400).json({
+        ok: false,
+        error: "No se puede eliminar el producto porque tiene salidas asociadas"
+      });
+    }
+
+    // 5. Si no tiene relaciones → eliminar
     await Producto.findByIdAndDelete(id);
-    console.log("✅ Producto eliminado en la BD");
+    console.log("✅ Producto eliminado correctamente");
 
     return res.json({ ok: true });
+
   } catch (error) {
-    console.error("🔥 ERROR ELIMINANDO:", error);
+    console.error("🔥 ERROR REAL ELIMINANDO PRODUCTO:", error);
     return res.status(500).json({ ok: false, error: "Error eliminando producto" });
   }
 });
+
+
 
 
 
