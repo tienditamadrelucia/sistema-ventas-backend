@@ -4,9 +4,10 @@ import Categoria from "../models/Categoria.js";
 const router = express.Router();
 // Obtener todas
 router.get("/", async (req, res) => {
-    const categorias = await Categoria.find();
+    const categorias = await Categoria.find().sort({ descripcion: 1 }); // ⭐ orden alfabético
     res.json(categorias);
 });
+
 // Crear
 router.post("/", async (req, res) => {
     const nueva = new Categoria(req.body);
