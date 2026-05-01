@@ -148,10 +148,8 @@ router.delete("/:id", async (req, res) => {
 router.post("/guardar", async (req, res) => {
   try {
     const { fecha, categoria, items } = req.body;
-
     // 1. Borrar registros anteriores de esa fecha y categoría
     await Inventario.deleteMany({ fecha });
-
     // 2. Insertar todos los nuevos
     const nuevos = items.map(item => ({
       fecha,
@@ -161,11 +159,8 @@ router.post("/guardar", async (req, res) => {
       stockFisico: item.stockFisico === "" ? "" : Number(item.stockFisico),
       observacion: item.observacion || ""
     }));
-
     await Inventario.insertMany(nuevos);
-
     res.json({ ok: true, mensaje: "Inventario guardado correctamente" });
-
   } catch (error) {
     res.status(500).json({ ok: false, error: error.message });
   }
@@ -174,33 +169,26 @@ router.post("/guardar", async (req, res) => {
 router.get("/stock-real/:codigo", async (req, res) => {
   try {
     const codigo = Number(req.params.codigo);
-
     // 1. Buscar el producto por código
     const producto = await Producto.findOne({ codigo });
     if (!producto) {
       return res.status(404).json({ ok: false, mensaje: "Producto no encontrado" });
     }
-
     const productoId = producto._id;
-
     // 2. Entradas
     const entradas = await Entrada.aggregate([
       { $match: { productoId } },
       { $group: { _id: null, total: { $sum: "$cantidad" } } }
     ]);
-
     // 3. Salidas
     const salidas = await Salida.aggregate([
       { $match: { productoId } },
       { $group: { _id: null, total: { $sum: "$cantidad" } } }
     ]);
-
     const totalEntradas = entradas?.[0]?.total || 0;
     const totalSalidas = salidas?.[0]?.total || 0;
-
     // 4. Stock real
     const stockReal = (producto.stock || 0) + totalEntradas - totalSalidas;
-
     // 5. Respuesta
     res.json({
       ok: true,
@@ -210,7 +198,6 @@ router.get("/stock-real/:codigo", async (req, res) => {
       totalSalidas,
       stockReal
     });
-
   } catch (error) {
     console.error("Error calculando stock real:", error);
     res.status(500).json({ ok: false, mensaje: "Error calculando stock real" });
