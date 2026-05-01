@@ -1,8 +1,8 @@
 import express from "express";
 import Producto from "../models/Producto.js";
-import venta from "../models/dbVendidos.js";
+import vendidos from "../models/dbVendidos.js";
 import entrada from "../models/entrada";
-import salida from "../models/rou_Salidas";
+import salida from "../models/dbSalidas.js";
 
 
 const router = express.Router();
