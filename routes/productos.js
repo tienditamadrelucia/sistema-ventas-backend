@@ -128,6 +128,9 @@ router.delete("/:id", async (req, res) => {
   console.log("➡️ Eliminando producto ID:", req.params.id);
   try {
     console.log("➡️ Eliminando producto ID:", req.params.id);
+    console.log("Venta:", Venta);
+    console.log("Entrada:", Entrada);
+    console.log("Salida:", Salida);
 
     const { id } = req.params;
 
