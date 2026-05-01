@@ -3,6 +3,7 @@ import Producto from "../models/Producto.js";
 import vendidos from "../models/dbVendidos.js";
 import entrada from "../models/Entrada.js";
 import salida from "../models/dbSalidas.js";
+import dbSalidas from "../models/dbSalidas.js";
 
 
 const router = express.Router();
@@ -140,7 +141,7 @@ router.delete("/:id", async (req, res) => {
     }
 
     // 2. Validar ventas asociadas
-    const ventas = await Vendidos.find({ productoId: id });
+    const ventas = await vendidos.find({ productoId: id });
     console.log("📌 Ventas asociadas:", ventas.length);
 
     if (ventas.length > 0) {
@@ -162,7 +163,7 @@ router.delete("/:id", async (req, res) => {
     }
 
     // 4. Validar salidas asociadas
-    const salidas = await Salida.find({ productoId: id });
+    const salidas = await dbSalidas.find({ productoId: id });
     console.log("📌 Salidas asociadas:", salidas.length);
 
     if (salidas.length > 0) {
