@@ -126,6 +126,7 @@ router.get("/:id", async (req, res) => {
 
 // Eliminar producto
 router.delete("/:id", async (req, res) => {
+  console.log("➡️ Eliminando producto ID:", req.params.id);
   try {
     console.log("➡️ Eliminando producto ID:", req.params.id);
 
