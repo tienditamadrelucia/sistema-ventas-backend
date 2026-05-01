@@ -2,7 +2,6 @@ import express from "express";
 import Producto from "../models/Producto.js";
 import vendidos from "../models/dbVendidos.js";
 import entrada from "../models/Entrada.js";
-import salida from "../models/dbSalidas.js";
 import dbSalidas from "../models/dbSalidas.js";
 
 
