@@ -126,14 +126,12 @@ router.get("/:id", async (req, res) => {
 // Eliminar producto
 router.delete("/:id", async (req, res) => {
   console.log("➡️ Eliminando producto ID:", req.params.id);
+  console.log("Venta:", vendidos);
+  console.log("Entrada:", Entrada);
+  console.log("Salida:", dbSalidas);
   try {
     console.log("➡️ Eliminando producto ID:", req.params.id);
-    console.log("Venta:", Venta);
-    console.log("Entrada:", Entrada);
-    console.log("Salida:", Salida);
-
     const { id } = req.params;
-
     // 1. Verificar que el producto exista
     const producto = await Producto.findById(id);
     console.log("📌 Producto encontrado:", producto);
