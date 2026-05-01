@@ -174,10 +174,27 @@ router.get("/:id", async (req, res) => {
     //res.status(500).json({ ok: false, error: "Error eliminando producto" });
  // }
 //});
-router.delete("/:id", (req, res) => {
-  console.log("🟢 LLEGÓ AL DELETE con id:", req.params.id);
-  return res.json({ ok: true, msg: "Delete básico funcionando" });
+router.delete("/:id", async (req, res) => {
+  try {
+    console.log("🟢 LLEGÓ AL DELETE con id:", req.params.id);
+
+    const { id } = req.params;
+
+    const producto = await Producto.findById(id);
+    if (!producto) {
+      return res.status(404).json({ ok: false, error: "Producto no encontrado" });
+    }
+
+    await Producto.findByIdAndDelete(id);
+    console.log("✅ Producto eliminado en la BD");
+
+    return res.json({ ok: true });
+  } catch (error) {
+    console.error("🔥 ERROR ELIMINANDO:", error);
+    return res.status(500).json({ ok: false, error: "Error eliminando producto" });
+  }
 });
+
 
 
 export default router;
