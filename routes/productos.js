@@ -1,5 +1,9 @@
 import express from "express";
 import Producto from "../models/Producto.js";
+import venta from "../models/dbVendidos.js";
+import entrada from "../models/Entrada";
+import salida from "../models/Salida";
+
 
 const router = express.Router();
 
@@ -26,8 +30,6 @@ async function ordenarProductosDB() {
 
   console.log("🔥 Productos ordenados por CATEGORÍA y luego por CÓDIGO");
 }
-
-
 
 // Obtener todos los productos
 router.get("/", async (req, res) => {
