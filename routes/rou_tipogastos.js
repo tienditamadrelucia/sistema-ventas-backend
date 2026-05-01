@@ -5,16 +5,22 @@ const router = express.Router();
 
 // Obtener todos
 router.get("/", async (req, res) => {
-  const tipos = await TipoGastos.find().sort({ descripcion: 1 });
-  res.json(tipos);
+  try {
+    const tipos = await TipoGastos.find().sort({ descripcion: 1 });
+    res.json(tipos);
+  } catch (error) {
+    console.error("Error listando tipos:", error);
+    res.status(500).json({ ok: false, error: "Error listando tipos" });
+  }
 });
 
 // Crear
-// Crear
 router.post("/", async (req, res) => {
   try {
+    req.body.descripcion = req.body.descripcion.toUpperCase(); // ⭐ NORMALIZAR
+
     const existe = await TipoGastos.findOne({
-      descripcion: req.body.descripcion.toUpperCase()
+      descripcion: req.body.descripcion
     });
 
     if (existe) {
@@ -30,16 +36,18 @@ router.post("/", async (req, res) => {
     res.json({ ok: true, tipo: guardado });
 
   } catch (error) {
+    console.error("Error creando tipo:", error);
     res.status(400).json({ ok: false, error: "No se pudo crear" });
   }
 });
 
-
 // Actualizar
 router.put("/:id", async (req, res) => {
   try {
+    req.body.descripcion = req.body.descripcion.toUpperCase(); // ⭐ NORMALIZAR
+
     const existe = await TipoGastos.findOne({
-      descripcion: req.body.descripcion.toUpperCase(),
+      descripcion: req.body.descripcion,
       _id: { $ne: req.params.id }
     });
 
@@ -59,10 +67,10 @@ router.put("/:id", async (req, res) => {
     res.json({ ok: true, tipo: actualizado });
 
   } catch (error) {
+    console.error("Error actualizando tipo:", error);
     res.status(400).json({ ok: false, error: "No se pudo actualizar" });
   }
 });
-
 
 // Eliminar
 router.delete("/:id", async (req, res) => {
@@ -70,6 +78,7 @@ router.delete("/:id", async (req, res) => {
     await TipoGastos.findByIdAndDelete(req.params.id);
     res.json({ ok: true, mensaje: "Tipo de gasto eliminado" });
   } catch (error) {
+    console.error("Error eliminando tipo:", error);
     res.status(400).json({ ok: false, error: "No se pudo eliminar" });
   }
 });
