@@ -10,5 +10,5 @@ const dbGastosSchema = new mongoose.Schema({
   usuario: { type: String },
   creado: { type: Date, default: Date.now }
 });
-
+ 
 export default mongoose.model("Gastos", dbGastosSchema);
