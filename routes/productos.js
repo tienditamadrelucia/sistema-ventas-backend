@@ -140,7 +140,7 @@ router.delete("/:id", async (req, res) => {
     }
 
     // 2. Validar ventas asociadas
-    const ventas = await Venta.find({ productoId: id });
+    const ventas = await Vendidos.find({ productoId: id });
     console.log("📌 Ventas asociadas:", ventas.length);
 
     if (ventas.length > 0) {
