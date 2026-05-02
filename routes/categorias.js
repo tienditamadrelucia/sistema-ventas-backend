@@ -77,13 +77,13 @@ router.delete("/:id", async (req, res) => {
   try {
     const { id } = req.params;
 
-    console.log("ID recibido:", id);
-
     const categoria = await Categoria.findById(id);
-    console.log("Categoría encontrada:", categoria);
+    if (!categoria) {
+      return res.status(404).json({ ok: false, error: "Categoría no encontrada" });
+    }
 
-    const productos = await Producto.find({ categoria: id });
-    console.log("Productos asociados:", productos);
+    // ⭐ Buscar productos por CÓDIGO, no por ID
+    const productos = await Producto.find({ categoria: categoria.codigo });
 
     if (productos.length > 0) {
       return res.status(400).json({
@@ -96,10 +96,11 @@ router.delete("/:id", async (req, res) => {
     res.json({ ok: true });
 
   } catch (error) {
-    console.error("ERROR REAL:", error);
+    console.error("Error eliminando categoría:", error);
     res.status(500).json({ ok: false, error: "Error eliminando categoría" });
   }
 });
+
 
 
 export default router;
