@@ -72,15 +72,26 @@ router.put("/:id", async (req, res) => {
   }
 });
 
-// Eliminar
+// Eliminar tipo de gasto
 router.delete("/:id", async (req, res) => {
   try {
-    await TipoGastos.findByIdAndDelete(req.params.id);
+    const { id } = req.params;
+    // ⭐ Buscar si hay gastos asociados a este tipo
+    const gastos = await Gastos.find({ tipo: id });
+    if (gastos.length > 0) {
+      return res.status(400).json({
+        ok: false,
+        error: "No se puede eliminar este tipo de gasto porque tiene gastos asociados"
+      });
+    }
+    // ⭐ Si no tiene gastos → eliminar
+    await TipoGastos.findByIdAndDelete(id);
     res.json({ ok: true, mensaje: "Tipo de gasto eliminado" });
   } catch (error) {
     console.error("Error eliminando tipo:", error);
-    res.status(400).json({ ok: false, error: "No se pudo eliminar" });
+    res.status(500).json({ ok: false, error: "Error eliminando tipo de gasto" });
   }
 });
+
 
 export default router;

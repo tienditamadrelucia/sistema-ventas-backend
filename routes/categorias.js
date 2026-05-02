@@ -10,22 +10,68 @@ router.get("/", async (req, res) => {
 
 // Crear
 router.post("/", async (req, res) => {
-    const nueva = new Categoria(req.body);
+  try {
+    const { codigo, descripcion } = req.body;
+
+    // Validar código duplicado
+    const existe = await Categoria.findOne({ codigo: codigo.toUpperCase() });
+    if (existe) {
+      return res.status(400).json({
+        ok: false,
+        error: "Ya existe una categoría con ese código"
+      });
+    }
+
+    const nueva = new Categoria({
+      codigo: codigo.toUpperCase(),
+      descripcion
+    });
+
     const guardada = await nueva.save();
     const completa = await Categoria.findById(guardada._id);
+
     res.json(completa);
+
+  } catch (error) {
+    console.log("Error creando categoría:", error);
+    res.status(500).json({ ok: false, error: "Error creando categoría" });
+  }
 });
+
 
 // Actualizar
 router.put("/:id", async (req, res) => {
+  try {
+    const { codigo, descripcion } = req.body;
+
+    // Validar duplicado en otras categorías
+    const existe = await Categoria.findOne({
+      codigo: codigo.toUpperCase(),
+      _id: { $ne: req.params.id }  // excluir la misma categoría
+    });
+
+    if (existe) {
+      return res.status(400).json({
+        ok: false,
+        error: "Ya existe otra categoría con ese código"
+      });
+    }
+
     const actualizada = await Categoria.findByIdAndUpdate(
-        req.params.id,
-        req.body,
-        { new: true }
+      req.params.id,
+      { codigo: codigo.toUpperCase(), descripcion },
+      { new: true }
     );
+
     res.json(actualizada);
+
+  } catch (error) {
+    console.log("Error actualizando categoría:", error);
+    res.status(500).json({ ok: false, error: "Error actualizando categoría" });
+  }
 });
 
+ 
 // Eliminar categoría
 router.delete("/:id", async (req, res) => {
   try {
