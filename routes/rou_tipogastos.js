@@ -1,5 +1,6 @@
 import express from "express";
 import TipoGastos from "../models/dbTipoGastos.js";
+import Gastos from "../models/dbGastos.js";
 
 const router = express.Router();
 
