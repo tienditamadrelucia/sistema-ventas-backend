@@ -19,54 +19,44 @@ router.get("/", async (req, res) => {
 router.post("/", async (req, res) => {
   try {
     req.body.descripcion = req.body.descripcion.toUpperCase(); // ⭐ NORMALIZAR
-
     const existe = await TipoGastos.findOne({
       descripcion: req.body.descripcion
     });
-
     if (existe) {
       return res.status(400).json({
         ok: false,
         error: "Ya existe un tipo de gasto con esa descripción"
       });
     }
-
     const nuevo = new TipoGastos(req.body);
     const guardado = await nuevo.save();
-
     res.json({ ok: true, tipo: guardado });
-
   } catch (error) {
     console.error("Error creando tipo:", error);
     res.status(400).json({ ok: false, error: "No se pudo crear" });
   }
 });
-
+ 
 // Actualizar
 router.put("/:id", async (req, res) => {
   try {
     req.body.descripcion = req.body.descripcion.toUpperCase(); // ⭐ NORMALIZAR
-
     const existe = await TipoGastos.findOne({
       descripcion: req.body.descripcion,
       _id: { $ne: req.params.id }
     });
-
     if (existe) {
       return res.status(400).json({
         ok: false,
         error: "Ya existe otro tipo de gasto con esa descripción"
       });
     }
-
     const actualizado = await TipoGastos.findByIdAndUpdate(
       req.params.id,
       req.body,
       { new: true }
     );
-
     res.json({ ok: true, tipo: actualizado });
-
   } catch (error) {
     console.error("Error actualizando tipo:", error);
     res.status(400).json({ ok: false, error: "No se pudo actualizar" });
@@ -78,7 +68,7 @@ router.delete("/:id", async (req, res) => {
   try {
     const { id } = req.params;
     // ⭐ Buscar si hay gastos asociados a este tipo
-    const gastos = await Gastos.find({ tipo: id });
+    const gastos = await Gastos.find({ TipoGastos: id });
     if (gastos.length > 0) {
       return res.status(400).json({
         ok: false,
