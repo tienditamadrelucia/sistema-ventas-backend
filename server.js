@@ -55,6 +55,7 @@ app.get("/api/ping", (req, res) => {
     // ⭐ 3. MONTAR RUTAS SOLO DESPUÉS DE LA DB
     app.use("/api/usuarios", usuarios);
     app.use("/api/categorias", categorias);
+    console.log(">>> RUTA DELETE CATEGORIAS CARGADA <<<");
     app.use("/api/productos", productos);
     app.use("/api/entradas", entradas);
     app.use("/api/salidas", salidas);
