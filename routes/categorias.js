@@ -1,5 +1,6 @@
 import express from "express";
 import Categoria from "../models/Categoria.js";
+import Product from "../models/Producto.js";
 
 console.log(">>> RUTA DELETE CATEGORIAS CARGADA <<<");
 const router = express.Router();
@@ -34,7 +35,6 @@ router.post("/", async (req, res) => {
     res.status(500).json({ ok: false, error: "Error creando categoría" });
   }
 });
-
 
 // Actualizar
 router.put("/:id", async (req, res) => {
