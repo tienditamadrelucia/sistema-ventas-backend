@@ -36,6 +36,7 @@ router.post("/", async (req, res) => {
 
 // Actualizar
 router.put("/:id", async (req, res) => {
+  console.log(">>> RUTA DELETE CATEGORIAS CARGADA <<<");
   try {
     const { codigo, descripcion } = req.body;
     // Validar duplicado en otras categorías
@@ -64,6 +65,7 @@ router.put("/:id", async (req, res) => {
  
 // Eliminar categoría
 router.delete("/:id", async (req, res) => {  
+  console.log(">>> RUTA DELETE CATEGORIAS CARGADA <<<");
   try {
     const { id } = req.params;
     console.log("id ", id);
