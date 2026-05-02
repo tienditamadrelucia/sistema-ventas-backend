@@ -1,6 +1,6 @@
 import express from "express";
 import Categoria from "../models/Categoria.js";
-import Product from "../models/Producto.js";
+import Producto from "../models/Producto.js";
 
 console.log(">>> RUTA DELETE CATEGORIAS CARGADA <<<");
 const router = express.Router();
