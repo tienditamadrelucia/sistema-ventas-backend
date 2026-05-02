@@ -1,6 +1,7 @@
 import express from "express";
 import Categoria from "../models/Categoria.js";
 
+console.log(">>> RUTA DELETE CATEGORIAS CARGADA <<<");
 const router = express.Router();
 // Obtener todas
 router.get("/", async (req, res) => {
