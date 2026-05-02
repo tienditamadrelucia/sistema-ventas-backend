@@ -4,6 +4,7 @@ import Categoria from "../models/Categoria.js";
 const router = express.Router();
 // Obtener todas
 router.get("/", async (req, res) => {
+    console.log(">>> RUTA DELETE CATEGORIAS CARGADA <<<");
     const categorias = await Categoria.find().sort({ descripcion: 1 }); // ⭐ orden alfabético
     res.json(categorias);
 });
