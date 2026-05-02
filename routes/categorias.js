@@ -82,7 +82,7 @@ router.delete("/:id", async (req, res) => {
       return res.status(404).json({ ok: false, error: "Categoría no encontrada" });
     }
     // Validar si hay productos asociados a esta categoría
-    const productos = await Producto.find({ categoria: id });
+    const productos = await Producto.find({ categoria: categoria.codigo });
     if (productos.length > 0) {
       console.log("Productos asociados:", productos);
       return res.status(400).json({
@@ -98,6 +98,5 @@ router.delete("/:id", async (req, res) => {
   res.status(500).json({ ok: false, error: "Error eliminando categoría" });
 }
 });
-
 
 export default router;
