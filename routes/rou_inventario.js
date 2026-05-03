@@ -78,6 +78,10 @@ router.get("/buscar", async (req, res) => {
         observacion: item.observacion
       };
     });
+    resultado.sort((a, b) =>
+      String(a.codigo).localeCompare(String(b.codigo), "es", { numeric: true })
+    );
+
     res.json(resultado);
   } catch (error) {
     res.status(500).json({ ok: false, error: error.message });
