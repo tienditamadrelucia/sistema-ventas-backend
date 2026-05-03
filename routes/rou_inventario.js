@@ -74,7 +74,12 @@ router.get("/buscar", async (req, res) => {
         descripcion: prod?.descripcion || "",
         foto: prod?.foto || "",
         stockReal: item.stockReal,
-        stockFisico: item.stockFisico,
+        stockFisico:
+          item.stockFisico === "" ||
+          item.stockFisico === null ||
+          item.stockFisico === undefined
+            ? ""
+            : Number(item.stockFisico),
         observacion: item.observacion
       };
     });
