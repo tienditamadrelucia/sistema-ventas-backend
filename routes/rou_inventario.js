@@ -153,7 +153,7 @@ router.post("/guardar", async (req, res) => {
   try {
     const { fecha, categoria, items } = req.body;
     // 1. Borrar registros anteriores de esa fecha y categoría
-    await Inventario.deleteMany({ fecha });
+    await Inventario.deleteMany({ fecha, categoria });
     // 2. Insertar todos los nuevos
     const nuevos = items.map(item => ({
       fecha,
