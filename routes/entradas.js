@@ -37,11 +37,11 @@ router.get("/", async (req, res) => {
 });
    
   }
-});
+}); 
 
 router.post("/", async (req, res) => {
   try {
-    const { fecha, categoria, productoId, codigo, cantidad, observacion, usuarioActual } = req.body;
+    const { fecha, categoria, productoId, codigo, cantidad, observacion } = req.body;
     const entrada = await Entrada.create({
       fecha: new Date(fecha),
       categoria,
