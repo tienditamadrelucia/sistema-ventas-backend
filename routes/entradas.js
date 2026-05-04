@@ -62,7 +62,7 @@ router.post("/", async (req, res) => {
 
 router.put("/:id", async (req, res) => {
   try {
-    const { fecha, categoria, productoId, codigo, cantidad, observacion, usuarioActual } = req.body;
+    const { fecha, categoria, productoId, codigo, cantidad, observacion } = req.body;
     const entrada = await Entrada.findByIdAndUpdate(
       req.params.id,
       {
