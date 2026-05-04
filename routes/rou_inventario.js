@@ -91,7 +91,7 @@ router.get("/buscar", async (req, res) => {
   } catch (error) {
     res.status(500).json({ ok: false, error: error.message });
   }
-});
+}); 
 
 /*
   POST /api/inventario
@@ -160,6 +160,7 @@ router.post("/guardar", async (req, res) => {
     // 1. Borrar registros anteriores de esa fecha y categoría
     await Inventario.deleteMany({ fecha, categoria });
     // 2. Insertar todos los nuevos
+    console.log("borró el inventario anterior");
     const nuevos = items.map(item => ({
       fecha,
       categoria,

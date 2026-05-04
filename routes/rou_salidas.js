@@ -25,7 +25,7 @@ router.get("/", async (req, res) => {
       .sort({ fecha: -1, createdAt: -1 })
       .skip((page - 1) * limit)
       .limit(parseInt(limit));      
-
+ 
     res.json({
       salidasdb,
       paginaActual: Number(page),
