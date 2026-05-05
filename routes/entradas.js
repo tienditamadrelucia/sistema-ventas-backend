@@ -6,13 +6,15 @@ const router = express.Router();
 // GET paginado (con filtro por fecha opcional)
 router.get("/", async (req, res) => {
   try {
-    const { page = 1, limit = 20, fecha } = req.query;
+    const pageNum = Number(page) || 1;
+    const limitNum = Number(limit) || 20;
+
 
     const filtro = {};
     if (fecha) {
       // fecha viene como "YYYY-MM-DD"
-      const inicio = new Date(fecha);
-      const fin = new Date(fecha);
+      const inicio = new Date(`${fecha}T00:00:00-04:00`);
+      const fin = new Date(`${fecha}T23:59:59-04:00`);
       fin.setHours(23, 59, 59, 999);
       filtro.fecha = { $gte: inicio, $lte: fin };
     }
@@ -20,9 +22,9 @@ router.get("/", async (req, res) => {
     const total = await Entrada.countDocuments(filtro);
     const entradas = await Entrada.find(filtro)
       .sort({ fecha: -1, createdAt: -1 })
-      .skip((page - 1) * limit)
-      .limit(parseInt(limit))
-      .populate("productoId", "codigo descripcion");
+      .skip((pageNum - 1) * limitNum)
+      .limit(limitNum)
+      .populate("productoId", "codigo descripcion categoria");
     res.json({
       entradas,
       paginaActual: Number(page),
