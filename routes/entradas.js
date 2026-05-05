@@ -13,10 +13,12 @@ router.get("/", async (req, res) => {
     const filtro = {};
     if (fecha) {
       // fecha viene como "YYYY-MM-DD"
-      const inicio = new Date(`${fecha}T00:00:00-04:00`);
-      const fin = new Date(`${fecha}T23:59:59-04:00`);
-      fin.setHours(23, 59, 59, 999);
-      filtro.fecha = { $gte: inicio, $lte: fin };
+      if (fecha) {
+        const inicio = new Date(`${fecha}T00:00:00.000Z`);
+        const fin = new Date(`${fecha}T23:59:59.999Z`);
+        filtro.fecha = { $gte: inicio, $lte: fin };
+      }
+
     }
 
     const total = await Entrada.countDocuments(filtro);
