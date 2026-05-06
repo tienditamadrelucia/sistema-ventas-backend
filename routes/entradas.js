@@ -4,44 +4,38 @@ import Entrada from "../models/Entrada.js";
 const router = express.Router();
 
 // GET paginado (con filtro por fecha opcional)
+// 🟢 LISTAR ENTRADAS CON PAGINACIÓN Y FECHA OPCIONAL
 router.get("/", async (req, res) => {
   try {
-    const pageNum = Number(page) || 1;
-    const limitNum = Number(limit) || 20;
-
-
-    //const filtro = {};
-    //if (fecha) {
-      // fecha viene como "YYYY-MM-DD"
-    //  if (fecha) {
-    //    const inicio = new Date(`${fecha}T00:00:00.000Z`);
-    //    const fin = new Date(`${fecha}T23:59:59.999Z`);
-   //     filtro.fecha = { $gte: inicio, $lte: fin };
-   //   }
-
-   // }
-
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 20;
+    const skip = (page - 1) * limit;
+    const { fecha } = req.query;
+    const filtro = {};
+    // 🔹 Si viene fecha, filtramos; si no, trae todo (como Clientes)
+    if (fecha) {
+      const inicio = new Date(`${fecha}T00:00:00.000Z`);
+      const fin = new Date(`${fecha}T23:59:59.999Z`);
+      filtro.fecha = { $gte: inicio, $lte: fin };
+    }
     const total = await Entrada.countDocuments(filtro);
     const entradas = await Entrada.find(filtro)
       .sort({ fecha: -1, createdAt: -1 })
-      .skip((pageNum - 1) * limitNum)
-      .limit(limitNum)
+      .skip(skip)
+      .limit(limit)
       .populate("productoId", "codigo descripcion categoria");
     res.json({
-      entradas,
-      paginaActual: Number(page),
-      totalPaginas: Math.ceil(total / limit),
-      totalRegistros: total
+      total,
+      page,
+      totalPages: Math.ceil(total / limit),
+      entradas
     });
   } catch (error) {
-    return res.status(400).json({
-    ok: false,
-    mensaje: "Descripción clara del error",
-    detalle: error.message
-});
-   
+    console.error("Error listando entradas:", error);
+    res.status(500).json({ ok: false, error: "Error listando entradas" });
   }
-}); 
+});
+
 
 router.post("/", async (req, res) => {
   try {
