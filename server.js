@@ -1,5 +1,4 @@
 import express from "express";
-import cors from "cors";
 import { conectarDB } from "./db/conexion.js";
 //import loginRoutes from "./routes/login.js";
 
