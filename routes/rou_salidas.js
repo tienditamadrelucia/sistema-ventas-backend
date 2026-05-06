@@ -14,12 +14,12 @@ router.get("/", async (req, res) => {
     const total = await dbSalidas.countDocuments();
 
     const salidas = await dbSalidas
-      .find()
-      .populate("productoId", "descripcion codigo")
-      .sort({ fecha: -1, createdAt: -1 })
-      .skip(skip)
-      .limit(limit);
-
+    .find()    
+    .populate("productoId", "codigo descripcion categoria")
+    .sort({ fecha: -1, createdAt: -1 })
+    .skip(skip)
+    .limit(limit);
+    console.log("SALIDA PRODUCTO:", salidas[0].productoId);
     res.json({
       total,
       page,
