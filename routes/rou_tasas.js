@@ -32,7 +32,7 @@ router.post("/guardar", async (req, res) => {
       tasaP: req.body.tasaP,
       tasaD: req.body.tasaD
     });
-    res.json({ ok: true, mensaje: "Tasas registradas", nueva });    
+    res.json({ ok: true, mensaje: "Tasas registradas", tasa: nueva });    
   } catch (error) {
     res.status(500).json({ ok: false, error: error.message });
   }
