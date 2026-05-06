@@ -6,17 +6,20 @@ const router = express.Router();
 // GET paginado (con filtro por fecha opcional)
 // 🟢 LISTAR ENTRADAS CON PAGINACIÓN Y FECHA OPCIONAL
 // 🟢 LISTAR ENTRADAS SIN FILTRO, SOLO PAGINACIÓN
+// 🟢 LISTAR ENTRADAS CON PAGINACIÓN (SIN FILTRO)
 router.get("/", async (req, res) => {
   try {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 20;
     const skip = (page - 1) * limit;
-    const total = await Entrada.countDocuments(); // ✔ sin filtro
-    const entradas = await Entrada.find()         // ✔ sin filtro
+
+    const total = await Entrada.countDocuments();
+    const entradas = await Entrada.find()
       .sort({ fecha: -1, createdAt: -1 })
       .skip(skip)
       .limit(limit)
       .populate("productoId", "codigo descripcion categoria");
+
     res.json({
       total,
       page,
@@ -28,6 +31,7 @@ router.get("/", async (req, res) => {
     res.status(500).json({ ok: false, error: "Error listando entradas" });
   }
 });
+
 
 
 
