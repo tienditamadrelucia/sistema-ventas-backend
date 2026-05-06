@@ -10,7 +10,7 @@ const ClienteSchema = new mongoose.Schema({
   nombreCompleto: { type: String, required: true },
   direccion: { type: String, default: "" },
   telefono: { type: String, default: "" },
-  fechaIngreso: { type: Date, required: true }
+  fechaIngreso: { type: Date, default: Date.now }
 });
 
 export default mongoose.model("Cliente", ClienteSchema);
