@@ -5,21 +5,14 @@ const router = express.Router();
 
 // GET paginado (con filtro por fecha opcional)
 // 🟢 LISTAR ENTRADAS CON PAGINACIÓN Y FECHA OPCIONAL
+// 🟢 LISTAR ENTRADAS SIN FILTRO, SOLO PAGINACIÓN
 router.get("/", async (req, res) => {
   try {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 20;
     const skip = (page - 1) * limit;
-    //const { fecha } = req.query;
-    //const filtro = {};
-    // 🔹 Si viene fecha, filtramos; si no, trae todo (como Clientes)
-    //if (fecha) {
-    //  const inicio = new Date(`${fecha}T00:00:00.000Z`);
-    //  const fin = new Date(`${fecha}T23:59:59.999Z`);
-    //  filtro.fecha = { $gte: inicio, $lte: fin };
-    //}
-    const total = await Entrada.countDocuments(filtro);
-    const entradas = await Entrada.find(filtro)
+    const total = await Entrada.countDocuments(); // ✔ sin filtro
+    const entradas = await Entrada.find()         // ✔ sin filtro
       .sort({ fecha: -1, createdAt: -1 })
       .skip(skip)
       .limit(limit)
@@ -35,6 +28,7 @@ router.get("/", async (req, res) => {
     res.status(500).json({ ok: false, error: "Error listando entradas" });
   }
 });
+
 
 
 router.post("/", async (req, res) => {
