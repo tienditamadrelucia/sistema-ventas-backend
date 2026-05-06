@@ -10,14 +10,14 @@ router.get("/", async (req, res) => {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 20;
     const skip = (page - 1) * limit;
-    const { fecha } = req.query;
-    const filtro = {};
+    //const { fecha } = req.query;
+    //const filtro = {};
     // 🔹 Si viene fecha, filtramos; si no, trae todo (como Clientes)
-    if (fecha) {
-      const inicio = new Date(`${fecha}T00:00:00.000Z`);
-      const fin = new Date(`${fecha}T23:59:59.999Z`);
-      filtro.fecha = { $gte: inicio, $lte: fin };
-    }
+    //if (fecha) {
+    //  const inicio = new Date(`${fecha}T00:00:00.000Z`);
+    //  const fin = new Date(`${fecha}T23:59:59.999Z`);
+    //  filtro.fecha = { $gte: inicio, $lte: fin };
+    //}
     const total = await Entrada.countDocuments(filtro);
     const entradas = await Entrada.find(filtro)
       .sort({ fecha: -1, createdAt: -1 })
