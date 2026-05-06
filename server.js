@@ -29,13 +29,16 @@ import caja from "./routes/rou_caja.js";
 import TipoGastos from "./routes/rou_tipogastos.js";
 
 const app = express();
+const cors= require("cors")
 
 app.use(express.json());
 app.use(cors({
   origin: [
     "http://localhost:3000",
+    "http://localhost:5173",
     "https://sistema-ventas-frontend-tan.vercel.app"
   ],
+  methods:["GET", "POST", "PUT", "DELETE"],
   credentials: true
 }));
 
