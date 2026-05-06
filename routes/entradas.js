@@ -10,16 +10,16 @@ router.get("/", async (req, res) => {
     const limitNum = Number(limit) || 20;
 
 
-    const filtro = {};
-    if (fecha) {
+    //const filtro = {};
+    //if (fecha) {
       // fecha viene como "YYYY-MM-DD"
-      if (fecha) {
-        const inicio = new Date(`${fecha}T00:00:00.000Z`);
-        const fin = new Date(`${fecha}T23:59:59.999Z`);
-        filtro.fecha = { $gte: inicio, $lte: fin };
-      }
+    //  if (fecha) {
+    //    const inicio = new Date(`${fecha}T00:00:00.000Z`);
+    //    const fin = new Date(`${fecha}T23:59:59.999Z`);
+   //     filtro.fecha = { $gte: inicio, $lte: fin };
+   //   }
 
-    }
+   // }
 
     const total = await Entrada.countDocuments(filtro);
     const entradas = await Entrada.find(filtro)
