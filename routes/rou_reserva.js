@@ -150,8 +150,16 @@ router.delete("/cancelar-sin-pago/:reservaId", async (req, res) => {
     if (reserva.pagoAsociado) {
       return res.status(400).json({ ok: false, msg: "La factura tiene pago asociado, use la ruta de cancelación con pago" });
     }
+    const numero = reserva.numero;
+    // 1. Borrar la reserva
     await FacturaReserva.deleteOne({ _id: reservaId });
-    return res.json({ ok: true });
+    // 2. Retroceder contador SOLO si este número es el último
+    const contador = await Contador.findOne({ tipo: "FACTURA" });
+    if (contador.valor === numero) {
+      contador.valor = contador.valor - 1;
+      await contador.save();
+    }
+    return res.json({ ok: true, msg: "Factura cancelada y contador ajustado" });
   } catch (error) {
     console.error("Error cancelando factura sin pago:", error);
     return res.status(500).json({
@@ -161,6 +169,7 @@ router.delete("/cancelar-sin-pago/:reservaId", async (req, res) => {
   }
 });
 
+
 /**
  * 5) Cancelar factura RESERVADA con pago:
  *    - Eliminar pagos en Moneda
@@ -168,7 +177,6 @@ router.delete("/cancelar-sin-pago/:reservaId", async (req, res) => {
  *    DELETE /api/facturas/cancelar-con-pago/:reservaId
  */
 router.delete("/cancelar-con-pago/:reservaId", async (req, res) => {
-  console.log("router: cancelar-con-pago")
   try {
     const { reservaId } = req.params;
     const reserva = await FacturaReserva.findById(reservaId);
@@ -179,11 +187,12 @@ router.delete("/cancelar-con-pago/:reservaId", async (req, res) => {
       return res.status(400).json({ ok: false, msg: "Solo se pueden cancelar facturas reservadas" });
     }
     const numeroFactura = reserva.numero;
-    // Eliminar pagos asociados en Moneda
+    // 1. Eliminar pagos asociados
     await Moneda.deleteMany({ factura: numeroFactura });
-    // Eliminar reserva
+    // 2. Eliminar reserva
     await FacturaReserva.deleteOne({ _id: reservaId });
-    return res.json({ ok: true });
+    // ⭐ NO retroceder contador porque ya hubo pago
+    return res.json({ ok: true, msg: "Factura con pago cancelada correctamente" });
   } catch (error) {
     console.error("Error cancelando factura con pago:", error);
     return res.status(500).json({
