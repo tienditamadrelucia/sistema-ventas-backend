@@ -4,33 +4,27 @@ import dbSalidas from "../models/dbSalidas.js";
 
 const router = express.Router();
 
-// GET paginado
+// GET paginado 
 router.get("/", async (req, res) => {
   try {
-    const { page = 1, limit = 20, fecha } = req.query;
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 20;
+    const skip = (page - 1) * limit;
 
-    const filtro = {};
-    if (fecha) {
-      const inicio = new Date(fecha);
-      const fin = new Date(fecha);
-      fin.setHours(23, 59, 59, 999);
-      filtro.fecha = { $gte: inicio, $lt: fin };
-    }
+    const total = await dbSalidas.countDocuments();
 
-    const total = await dbSalidas.countDocuments(filtro);
-
-    const salidasdb = await dbSalidas
-      .find(filtro)
+    const salidas = await dbSalidas
+      .find()
       .populate("productoId", "descripcion codigo")
       .sort({ fecha: -1, createdAt: -1 })
-      .skip((page - 1) * limit)
-      .limit(parseInt(limit));      
- 
+      .skip(skip)
+      .limit(limit);
+
     res.json({
-      salidasdb,
-      paginaActual: Number(page),
-      totalPaginas: Math.ceil(total / limit),
-      totalRegistros: total
+      total,
+      page,
+      totalPages: Math.ceil(total / limit),
+      salidas
     });
 
   } catch (error) {
@@ -41,6 +35,7 @@ router.get("/", async (req, res) => {
     });
   }
 });
+
 
 // POST crear
 router.post("/", async (req, res) => {
