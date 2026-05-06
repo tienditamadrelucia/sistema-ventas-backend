@@ -19,13 +19,14 @@ router.get("/hoy", async (req, res) => {
 // 📌 Guardar tasas del día (solo si NO existen)
 router.post("/guardar", async (req, res) => {
   try {
-    const hoy = new Date().toISOString().slice(0, 10); // Formato YYYY-MM-DD
-    const existe = await Tasas.findOne({ fecha: hoy }); // Verificación correcta
+    const fecha = req.body.fecha; // ← usar la fecha enviada por el frontend
+    const existe = await Tasas.findOne({ fecha });
+
     if (existe) {
       return res.json({ ok: false, mensaje: "Las tasas del día ya existen" });
     }
     const nueva = await Tasas.create({
-      fecha: hoy, // Asegúrate de guardar la fecha en el formato correcto
+      fecha, // Asegúrate de guardar la fecha en el formato correcto
       cajachicaP: req.body.cajachicaP,
       cajachicaD: req.body.cajachicaD,
       tasaP: req.body.tasaP,
@@ -68,8 +69,12 @@ router.get("/todas", async (req, res) => {
 
 router.get("/por-fecha/:fecha", async (req, res) => {
   try {
-    const fecha = req.params.fecha; // formato YYYY-MM-DD
-    const tasa = await Tasas.findOne({ fecha });
+    const fecha = req.params.fecha; // "2026-05-01"
+    const inicio = new Date(`${fecha}T00:00:00.000Z`);
+    const fin = new Date(`${fecha}T23:59:59.999Z`);
+    const tasa = await Tasas.findOne({
+      fecha: { $gte: inicio, $lte: fin }
+    });
     if (!tasa) {
       return res.status(404).json({ ok: false, msg: "No hay tasas para esa fecha" });
     }
@@ -79,5 +84,6 @@ router.get("/por-fecha/:fecha", async (req, res) => {
     return res.status(500).json({ ok: false, msg: "Error obteniendo tasa por fecha" });
   }
 });
+
 
 export default router;
