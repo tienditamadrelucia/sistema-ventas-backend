@@ -1,4 +1,5 @@
 import express from "express";
+import cors from "cors";
 import { conectarDB } from "./db/conexion.js";
 //import loginRoutes from "./routes/login.js";
 
@@ -28,7 +29,6 @@ import caja from "./routes/rou_caja.js";
 import TipoGastos from "./routes/rou_tipogastos.js";
 
 const app = express();
-const cors= require("cors")
 
 app.use(express.json());
 app.use(cors({
