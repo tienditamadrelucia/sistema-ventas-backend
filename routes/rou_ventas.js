@@ -6,7 +6,7 @@ import Cliente from "../models/Cliente.js";
 import Producto from "../models/Producto.js";
 import { crearVenta, obtenerVentas, buscarVentaPorNumero } from "../controllers/con_ventas.js";
 import Tasas from "../models/dbTasas.js";
-import Contador from "../models/contador.js";
+import Contador from "../models/Contador.js";
 import Pago from "../models/Pago.js"; // 🔹 ajusta el nombre/ruta si es distinto
 
 const router = express.Router();

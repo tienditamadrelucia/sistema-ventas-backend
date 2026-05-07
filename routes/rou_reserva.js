@@ -1,229 +1,148 @@
 import express from "express";
 import FacturaReserva from "../models/FacturaReserva.js";
-import Vendidos from "../models/dbVendidos.js";  // tu modelo vendidos
-import Moneda from "../models/dbMoneda.js";      // tu modelo Moneda
-import { obtenerFactura } from "../utils/obtenerFactura.js";
+import Vendidos from "../models/dbVendidos.js";
+import Moneda from "../models/dbMoneda.js";
 import Ventas from "../models/dbVentas.js";
 import Contador from "../models/Contador.js";
 
 const router = express.Router();
 
-/**
- * 1) Reservar número de factura al abrir una venta
- * POST /api/facturas/reservar
- */
-router.post("/reservar", async (req, res) => {
-  try {
-    const numero = await obtenerFactura();
-    console.log("router: reservar")
-    const reserva = new FacturaReserva({
-      numero,
-      estado: "RESERVADA",
-      pagoAsociado: false
-    });
-    await reserva.save();
-    return res.json({
-      ok: true,
-      reservaId: reserva._id,
-      numeroFactura: numero
-    });
-  } catch (error) {
-    console.error("Error reservando factura:", error);
-    return res.status(500).json({
-      ok: false,
-      msg: "Error reservando número de factura"
-    });
-  }
-});
-
-/**
- * 2) Finalizar venta: crear documentos en ventas y vendidos
- *    y marcar la reserva como FINALIZADA
- * POST /api/facturas/finalizar
- */
-router.post("/finalizar", async (req, res) => {
-  try {
-    const {
-      reservaId,
-      fecha,
-      hora,
-      cliente,
-      subtotal,
-      IVA,
-      total,
-      usuario,
-      productos // array de { productoId, cantidad, precio, dscto, total }
-    } = req.body;
-    if (!reservaId) {
-      return res.status(400).json({ ok: false, msg: "Falta reservaId" });
-    }
-    const reserva = await FacturaReserva.findById(reservaId);
-    if (!reserva) {
-      return res.status(404).json({ ok: false, msg: "Reserva de factura no encontrada" });
-    }
-    if (reserva.estado === "FINALIZADA") {
-      return res.status(400).json({ ok: false, msg: "La factura ya fue finalizada" });
-    }
-    const numeroFactura = reserva.numero;
-    // Crear documento en ventas
-    const venta = new Ventas({
-      fecha: fecha ? new Date(fecha) : new Date(),
-      hora,
-      factura: numeroFactura,
-      cliente,
-      subtotal,
-      IVA,
-      total,
-      usuario
-    });
-    await venta.save();
-    // Crear documentos en vendidos
-    if (Array.isArray(productos) && productos.length > 0) {
-      const docsVendidos = productos.map((p) => ({
-        factura: numeroFactura,
-        productoId: p.productoId,
-        cantidad: p.cantidad,
-        precio: p.precio,
-        dscto: p.dscto || 0,
-        total: p.total
-      }));
-      await Vendidos.insertMany(docsVendidos);
-    }
-    // Eliminar reserva como FINALIZADA
-    await FacturaReserva.findByIdAndDelete(reservaId);
-    return res.json({
-      ok: true,
-      numeroFactura,
-      ventaId: venta._id
-    });
-  } catch (error) {
-    console.error("Error finalizando factura:", error);
-    return res.status(500).json({
-      ok: false,
-      msg: "Error finalizando factura"
-    });
-  }
-});
-
-/**
- * 3) Marcar reserva con pago asociado
- *    (esto lo llamas desde la ruta donde ya grabas Moneda)
- * POST /api/facturas/marcar-pago
- */
+/*
+  ============================================================
+  1) MARCAR RESERVA CON PAGO (solo para compatibilidad antigua)
+  ============================================================
+*/
 router.post("/marcar-pago", async (req, res) => {
-  console.log("router: marcar-pago")
   try {
     const { numeroFactura } = req.body;
     if (!numeroFactura) {
       return res.status(400).json({ ok: false, msg: "Falta numeroFactura" });
     }
+
     const reserva = await FacturaReserva.findOne({ numero: numeroFactura });
     if (!reserva) {
-      return res.status(404).json({ ok: false, msg: "Reserva no encontrada para ese número" });
+      return res.status(404).json({ ok: false, msg: "Reserva no encontrada" });
     }
+
     reserva.pagoAsociado = true;
     await reserva.save();
+
     return res.json({ ok: true });
   } catch (error) {
     console.error("Error marcando pago en reserva:", error);
-    return res.status(500).json({
-      ok: false,
-      msg: "Error marcando pago asociado"
-    });
+    return res.status(500).json({ ok: false, msg: "Error marcando pago asociado" });
   }
 });
 
-/**
- * 4) Cancelar factura RESERVADA sin pago
- *    DELETE /api/facturas/cancelar-sin-pago/:reservaId
- */
+/*
+  ============================================================
+  2) CANCELAR RESERVA SIN PAGO (flujo antiguo)
+  ============================================================
+*/
 router.delete("/cancelar-sin-pago/:reservaId", async (req, res) => {
   try {
     const { reservaId } = req.params;
+
     const reserva = await FacturaReserva.findById(reservaId);
     if (!reserva) {
       return res.status(404).json({ ok: false, msg: "Reserva no encontrada" });
     }
+
     if (reserva.estado !== "RESERVADA") {
       return res.status(400).json({ ok: false, msg: "Solo se pueden cancelar facturas reservadas" });
     }
+
     if (reserva.pagoAsociado) {
-      return res.status(400).json({ ok: false, msg: "La factura tiene pago asociado, use la ruta de cancelación con pago" });
+      return res.status(400).json({ ok: false, msg: "La factura tiene pago asociado" });
     }
+
     const numero = reserva.numero;
-    // 1. Borrar la reserva
+
     await FacturaReserva.deleteOne({ _id: reservaId });
-    // 2. Retroceder contador SOLO si este número es el último
+
+    // Retroceder contador SOLO si este número es el último
     const contador = await Contador.findOne({ tipo: "FACTURA" });
     if (contador.valor === numero) {
       contador.valor = contador.valor - 1;
       await contador.save();
     }
+
     return res.json({ ok: true, msg: "Factura cancelada y contador ajustado" });
   } catch (error) {
     console.error("Error cancelando factura sin pago:", error);
-    return res.status(500).json({
-      ok: false,
-      msg: "Error cancelando factura sin pago"
-    });
+    return res.status(500).json({ ok: false, msg: "Error cancelando factura sin pago" });
   }
 });
 
-
-/**
- * 5) Cancelar factura RESERVADA con pago:
- *    - Eliminar pagos en Moneda
- *    - Eliminar reserva
- *    DELETE /api/facturas/cancelar-con-pago/:reservaId
- */
+/*
+  ============================================================
+  3) CANCELAR RESERVA CON PAGO (flujo antiguo)
+  ============================================================
+*/
 router.delete("/cancelar-con-pago/:reservaId", async (req, res) => {
   try {
     const { reservaId } = req.params;
+
     const reserva = await FacturaReserva.findById(reservaId);
     if (!reserva) {
       return res.status(404).json({ ok: false, msg: "Reserva no encontrada" });
     }
+
     if (reserva.estado !== "RESERVADA") {
       return res.status(400).json({ ok: false, msg: "Solo se pueden cancelar facturas reservadas" });
     }
+
     const numeroFactura = reserva.numero;
-    // 1. Eliminar pagos asociados
+
+    // Eliminar pagos asociados
     await Moneda.deleteMany({ factura: numeroFactura });
-    // 2. Eliminar reserva
+
+    // Eliminar reserva
     await FacturaReserva.deleteOne({ _id: reservaId });
-    // ⭐ NO retroceder contador porque ya hubo pago
+
+    // NO retroceder contador porque hubo pago
     return res.json({ ok: true, msg: "Factura con pago cancelada correctamente" });
   } catch (error) {
     console.error("Error cancelando factura con pago:", error);
-    return res.status(500).json({
-      ok: false,
-      msg: "Error cancelando factura con pago"
-    });
+    return res.status(500).json({ ok: false, msg: "Error cancelando factura con pago" });
   }
 });
 
-router.delete("/eliminar-completa/:factura", async (req, res) => {    
+/*
+  ============================================================
+  4) ELIMINAR TODO (pago + venta + reserva + revertir contador)
+     ⚠️ SOLO USAR SI LA FACTURA NO SE HA GUARDADO
+  ============================================================
+*/
+router.delete("/eliminar-completa/:factura", async (req, res) => {
   try {
     const factura = Number(req.params.factura);
-    // 1. Eliminar reserva (usa numero)
+
+    // 1. Eliminar reserva (si existe)
     await FacturaReserva.findOneAndDelete({ numero: factura });
+
     // 2. Eliminar pagos
-    console.log("router: eliminar-completa ", factura)
-    await Moneda.deleteMany({ factura});
-    // 3. Eliminar vueltos
-    //await Moneda.deleteMany({ factura, operacion: "VUELTOS" });
-    // 4. Eliminar movimientos de ventas
+    await Moneda.deleteMany({ factura });
+
+    // 3. Eliminar ventas y vendidos
     await Ventas.deleteMany({ factura });
-    // 5. Revertir contador (NO eliminarlo)
-    await Contador.findOneAndUpdate(
-      { tipo: "FACTURA" },
-      { $inc: { valor: -1 } }
-    );
+    await Vendidos.deleteMany({ factura });
+
+    // 4. Revertir contador SOLO si este número es el último
+    const contador = await Contador.findOne({ tipo: "FACTURA" });
+    if (contador.valor === factura) {
+      await Contador.findOneAndUpdate(
+        { tipo: "FACTURA" },
+        { $inc: { valor: -1 } }
+      );
+    }
+
     return res.json({
       ok: true,
-      mensaje: "Factura, pagos, vueltos, reserva y contador revertido correctamente"
+      mensaje: "Factura, pagos, vendidos y contador revertidos correctamente"
     });
   } catch (error) {
+    console.error("Error eliminando factura completa:", error);
     return res.status(500).json({
       ok: false,
       mensaje: "Error eliminando factura completa",
@@ -232,6 +151,11 @@ router.delete("/eliminar-completa/:factura", async (req, res) => {
   }
 });
 
+/*
+  ============================================================
+  5) ELIMINAR RESERVA POR ID (compatibilidad)
+  ============================================================
+*/
 router.delete("/eliminar/:id", async (req, res) => {
   try {
     const { id } = req.params;
