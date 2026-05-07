@@ -6,64 +6,128 @@ import Cliente from "../models/Cliente.js";
 import Producto from "../models/Producto.js";
 import { crearVenta, obtenerVentas, buscarVentaPorNumero } from "../controllers/con_ventas.js";
 import Tasas from "../models/dbTasas.js";
+import Contador from "../models/contador.js";
+import Pago from "../models/Pago.js"; // 🔹 ajusta el nombre/ruta si es distinto
 
 const router = express.Router();
 
 router.post("/", crearVenta);
 router.get("/", obtenerVentas);
 
-// ⭐ NUEVA RUTA PARA BUSCAR FACTURA POR NÚMERO
-
-router.get("/vendidos/:numeroFactura", buscarVentaPorNumero);
-
-router.get("/ventas/:fecha", async (req, res) => {
-    try {
-        const { fecha } = req.params;
-        if (!fecha || fecha.length !== 10) {
-            return res.json({
-                ok: false,
-                msg: "Fecha inválida",
-                VentasP: 0,
-                VentasD: 0,
-                VentasBs: 0
-            });
-        } 
-        // Buscar todas las ventas del día
-        const ventas = await dbMoneda.find({ fecha });
-        // Sumar por moneda
-        const VentasP = ventas.reduce((acc, v) => acc + (v.efectivoP || 0), 0);
-        const VentasD = ventas.reduce((acc, v) => acc + (v.efectivoD || 0), 0);
-        const VentasBs = ventas.reduce((acc, v) => acc + (v.efectivoBs || 0), 0);
-        return res.json({
-            ok: true,
-            VentasP,
-            VentasD,
-            VentasBs
-        });
-    } catch (error) {
-        console.error("ERROR EN VENTAS:", error);
-        return res.status(500).json({
-            ok: false,
-            msg: "Error interno consultando ventas",
-            VentasP: 0,
-            VentasD: 0,
-            VentasBs: 0
-        });
-    }
+// Número actual de factura (NO incrementa)
+router.get("/factura-actual", async (req, res) => {
+  try {
+    const contador = await Contador.findOne({ tipo: "FACTURA" });
+    return res.json({ ok: true, numero: contador.valor });
+  } catch (error) {
+    console.error("Error obteniendo número actual:", error);
+    return res.status(500).json({ ok: false, msg: "Error obteniendo número actual" });
+  }
 });
 
+// Guardar factura completa (venta + vendidos + pago)
+router.post("/guardar", async (req, res) => {
+  try {
+    const { cliente, fecha, hora, subtotal, iva, total, usuario, estado, items, pago } = req.body;
+
+    const numeroFactura = await asignarFactura(); // viene del controlador
+
+    const venta = new Ventas({
+      factura: numeroFactura,
+      fecha,
+      hora,
+      cliente,
+      subtotal,
+      iva,
+      total,
+      usuario,
+      estado
+    });
+    await venta.save();
+
+    for (const item of items) {
+      await new Vendidos({
+        factura: numeroFactura,
+        productoId: item.idProducto,
+        cantidad: item.cantidad,
+        precio: item.precioVenta,
+        dscto: item.descuento || 0,
+        total: item.total
+      }).save();
+    }
+
+    if (pago) {
+      await new Pago({
+        factura: numeroFactura,
+        idPago: pago.idPago,
+        idVuelto: pago.idVuelto,
+        totalAbonado: pago.totalAbonado,
+        modoCredito: pago.modoCredito,
+        abono: pago.abono,
+        saldo: pago.saldo
+      }).save();
+    }
+
+    return res.json({ ok: true, numeroFactura });
+  } catch (error) {
+    console.error("Error guardando factura:", error);
+    return res.status(500).json({ ok: false, msg: "Error guardando factura" });
+  }
+});
+
+// Buscar venta por número (para detalle rápido)
+router.get("/vendidos/:numeroFactura", buscarVentaPorNumero);
+
+// Resumen de ventas por fecha (Moneda)
+router.get("/ventas/:fecha", async (req, res) => {
+  try {
+    const { fecha } = req.params;
+    if (!fecha || fecha.length !== 10) {
+      return res.json({
+        ok: false,
+        msg: "Fecha inválida",
+        VentasP: 0,
+        VentasD: 0,
+        VentasBs: 0
+      });
+    }
+    const ventas = await Moneda.find({ fecha });
+
+    const VentasP = ventas.reduce((acc, v) => acc + (v.efectivoP || 0), 0);
+    const VentasD = ventas.reduce((acc, v) => acc + (v.efectivoD || 0), 0);
+    const VentasBs = ventas.reduce((acc, v) => acc + (v.efectivoBs || 0), 0);
+
+    return res.json({
+      ok: true,
+      VentasP,
+      VentasD,
+      VentasBs
+    });
+  } catch (error) {
+    console.error("ERROR EN VENTAS:", error);
+    return res.status(500).json({
+      ok: false,
+      msg: "Error interno consultando ventas",
+      VentasP: 0,
+      VentasD: 0,
+      VentasBs: 0
+    });
+  }
+});
+
+// Detalle completo de una factura
 router.get("/detalle/:factura", async (req, res) => {
   try {
     const factura = Number(req.params.factura);
-    // Buscar venta
+
     const venta = await Ventas.findOne({ factura });
     if (!venta) {
       return res.json({ ok: false, msg: "Factura no encontrada" });
     }
-    // Buscar detalle
+
     const detalle = await Vendidos.find({ factura });
-    // Buscar pagos
     const pagos = await Moneda.find({ factura });
+
     return res.json({
       ok: true,
       venta,
@@ -79,10 +143,7 @@ router.get("/detalle/:factura", async (req, res) => {
   }
 });
 
-/*
-  REPORTE DIARIO / RANGO DE FECHAS
-  /api/ventas/reporte/2024-01-01/2024-01-31
-*/
+// REPORTE GENERAL
 router.get("/reporte/:desde/:hasta", async (req, res) => {
   try {
     const { desde, hasta } = req.params;
@@ -96,9 +157,6 @@ router.get("/reporte/:desde/:hasta", async (req, res) => {
 
     const reporte = [];
 
-    // ============================
-    //  TOTALES GENERALES
-    // ============================
     let totalVentas = 0;
 
     let totalEfectivoP = 0;
@@ -117,15 +175,8 @@ router.get("/reporte/:desde/:hasta", async (req, res) => {
     let totalVueltoD = 0;
 
     for (const venta of ventas) {
-
-      // ============================
-      // 1. CLIENTE
-      // ============================
       const cliente = await Cliente.findOne({ identificacion: venta.cliente });
 
-      // ============================
-      // 2. PRODUCTOS
-      // ============================
       const vendidos = await Vendidos.find({ factura: venta.factura });
 
       const productos = [];
@@ -136,17 +187,14 @@ router.get("/reporte/:desde/:hasta", async (req, res) => {
         productos.push({
           codigo: prod ? prod.codigo : "N/A",
           descripcion: prod ? prod.descripcion : "Producto no encontrado",
-          precioSistema: prod ? prod.venta : 0,   // ✔ PRECIO DEL SISTEMA
+          precioSistema: prod ? prod.venta : 0,
           cantidad: v.cantidad,
-          precioVenta: v.precio,                  // ✔ PRECIO REAL DE VENTA
+          precioVenta: v.precio,
           dscto: v.dscto,
           total: v.total
         });
       }
 
-      // ============================
-      // 3. PAGOS + VUELTOS
-      // ============================
       const pagosDocs = await Moneda.find({ factura: venta.factura });
 
       let pagos = {
@@ -167,11 +215,7 @@ router.get("/reporte/:desde/:hasta", async (req, res) => {
       };
 
       for (const p of pagosDocs) {
-
-        // ============================
-        // PAGOS (operacion = "VENTA")
-        // ============================
-        if (p.operacion === "VENTA" || p.operacion === "ABONO DE CREDITO") {  // SUMA PAGOS
+        if (p.operacion === "VENTA" || p.operacion === "ABONO DE CREDITO") {
           pagos.efectivoP += Number(p.efectivoP || 0);
           pagos.transferenciaP += Number(p.transferenciaP || 0);
 
@@ -184,9 +228,6 @@ router.get("/reporte/:desde/:hasta", async (req, res) => {
           pagos.zelle += Number(p.zelle || 0);
         }
 
-        // ============================
-        // VUELTOS (operacion = "VUELTOS")
-        // ============================
         if (p.operacion === "VUELTOS") {
           pagos.vueltoP += Number(p.efectivoP || 0);
           pagos.vueltoBs += Number(p.efectivoBs || 0);
@@ -194,15 +235,12 @@ router.get("/reporte/:desde/:hasta", async (req, res) => {
         }
       }
 
-      // ============================
-      // 4. SUMAR A TOTALES GENERALES
-      // ============================
       totalVentas += Number(venta.total || 0);
 
       totalEfectivoP += pagos.efectivoP + pagos.vueltoP;
       totalTransferenciaP += pagos.transferenciaP;
 
-      totalEfectivoBs += pagos.efectivoBs +pagos.vueltoBs;
+      totalEfectivoBs += pagos.efectivoBs + pagos.vueltoBs;
       totalTransferenciaBs += pagos.transferenciaBs;
       totalPuntoBs += pagos.puntoBs;
       totalPagoMovilBs += pagos.pagomovilBs;
@@ -210,13 +248,10 @@ router.get("/reporte/:desde/:hasta", async (req, res) => {
       totalEfectivoD += pagos.efectivoD + pagos.vueltoD;
       totalZelle += pagos.zelle;
 
-      //totalVueltoP += pagos.vueltoP;
-      //totalVueltoBs += pagos.vueltoBs;
-      //totalVueltoD += pagos.vueltoD;
+      totalVueltoP += pagos.vueltoP;
+      totalVueltoBs += pagos.vueltoBs;
+      totalVueltoD += pagos.vueltoD;
 
-      // ============================
-      // 5. ARMAR REPORTE POR FACTURA
-      // ============================
       reporte.push({
         venta,
         clienteNombre: cliente ? cliente.nombreCompleto : "SIN NOMBRE",
@@ -225,44 +260,31 @@ router.get("/reporte/:desde/:hasta", async (req, res) => {
       });
     }
 
-    // ============================
-    // 6. RESPUESTA FINAL
-    // ============================
     res.json({
-  ok: true,
-  reporte,
-  totales: {
-    // PESOS
-    totalPesos: totalEfectivoP + totalTransferenciaP + totalVueltoP,
-
-    // BOLÍVARES
-    totalBolivares:
-      totalEfectivoBs +
-      totalTransferenciaBs +
-      totalPuntoBs +
-      totalPagoMovilBs +
-      totalVueltoBs,
-
-    // DÓLARES
-    totalDolares: totalEfectivoD + totalZelle + totalVueltoD,
-
-    // TOTALES INDIVIDUALES
-    totalEfectivoP,
-    totalTransferenciaP,
-
-    totalEfectivoBs,
-    totalTransferenciaBs,
-    totalPuntoBs,
-    totalPagoMovilBs,
-
-    totalEfectivoD,
-    totalZelle,
-
-    totalVueltoP,
-    totalVueltoBs,
-    totalVueltoD
-  }
-});
+      ok: true,
+      reporte,
+      totales: {
+        totalPesos: totalEfectivoP + totalTransferenciaP + totalVueltoP,
+        totalBolivares:
+          totalEfectivoBs +
+          totalTransferenciaBs +
+          totalPuntoBs +
+          totalPagoMovilBs +
+          totalVueltoBs,
+        totalDolares: totalEfectivoD + totalZelle + totalVueltoD,
+        totalEfectivoP,
+        totalTransferenciaP,
+        totalEfectivoBs,
+        totalTransferenciaBs,
+        totalPuntoBs,
+        totalPagoMovilBs,
+        totalEfectivoD,
+        totalZelle,
+        totalVueltoP,
+        totalVueltoBs,
+        totalVueltoD
+      }
+    });
 
   } catch (error) {
     console.log("ERROR REPORTE:", error);
@@ -270,6 +292,7 @@ router.get("/reporte/:desde/:hasta", async (req, res) => {
   }
 });
 
+// REPORTE CRÉDITOS
 router.get("/reporte-creditos/:desde/:hasta", async (req, res) => {
   try {
     const { desde, hasta } = req.params;
@@ -277,34 +300,24 @@ router.get("/reporte-creditos/:desde/:hasta", async (req, res) => {
     const fechaInicio = new Date(desde + "T00:00:00");
     const fechaFin = new Date(hasta + "T23:59:59");
 
-    // ⭐ SOLO FACTURAS A CRÉDITO
     const ventas = await Ventas.find({
       fecha: { $gte: fechaInicio, $lte: fechaFin },
       estado: "CREDITO"
     }).sort({ factura: 1 });
 
     const reporte = [];
-    // ============================
-    // ⭐ TASA DEL DÍA (HOY)
-    // ============================
+
     const hoy = new Date().toISOString().slice(0, 10);
     const tasaHoy = await Tasas.findOne({ fecha: hoy });
     if (!tasaHoy) {
       return res.json({ ok: false, msg: "No hay tasa registrada hoy" });
     }
-    const tasaP = Number(tasaHoy.tasaP); // Pesos por dólar
-    const tasaD = Number(tasaHoy.tasaD); // Bolívares por dólar
+    const tasaP = Number(tasaHoy.tasaP);
+    const tasaD = Number(tasaHoy.tasaD);
 
     for (const venta of ventas) {
-
-      // ============================
-      // 1. CLIENTE
-      // ============================
       const cliente = await Cliente.findOne({ identificacion: venta.cliente });
 
-      // ============================
-      // 2. PRODUCTOS
-      // ============================
       const vendidos = await Vendidos.find({ factura: venta.factura });
 
       const productos = [];
@@ -323,48 +336,39 @@ router.get("/reporte-creditos/:desde/:hasta", async (req, res) => {
         });
       }
 
-      // ============================
-      // 3. ABONOS (Moneda)
-      // ============================
       const abonosDocs = await Moneda.find({
         factura: venta.factura,
         operacion: "ABONO DE CREDITO"
-      }).sort({ fecha: 1 });      
+      }).sort({ fecha: 1 });
 
       const abonos = [];
-      let totalAbonadoD = 0; // ⭐ TOTAL ABONADO EN DÓLARES
+      let totalAbonadoD = 0;
 
       for (const a of abonosDocs) {
         abonos.push({
-        fecha: a.fecha,
-        efectivoP: a.efectivoP,
-        transferenciaP: a.transferenciaP,
-        efectivoBs: a.efectivoBs,
-        transferenciaBs: a.transferenciaBs,
-        puntoBs: a.puntoBs,
-        pagomovilBs: a.pagomovilBs,
-        efectivoD: a.efectivoD,
-        zelle: a.zelle
+          fecha: a.fecha,
+          efectivoP: a.efectivoP,
+          transferenciaP: a.transferenciaP,
+          efectivoBs: a.efectivoBs,
+          transferenciaBs: a.transferenciaBs,
+          puntoBs: a.puntoBs,
+          pagomovilBs: a.pagomovilBs,
+          efectivoD: a.efectivoD,
+          zelle: a.zelle
         });
-        // ⭐ CONVERTIR TODO A DÓLARES
+
         const abonoEnD =
-        (a.efectivoP + a.transferenciaP) / tasaP + // Pesos → D
-        (a.efectivoBs + a.transferenciaBs + a.puntoBs + a.pagomovilBs) / tasaD + // Bs → D
-        (a.efectivoD + a.zelle); // Dólares
+          (a.efectivoP + a.transferenciaP) / tasaP +
+          (a.efectivoBs + a.transferenciaBs + a.puntoBs + a.pagomovilBs) / tasaD +
+          (a.efectivoD + a.zelle);
+
         totalAbonadoD += abonoEnD;
       }
 
+      const saldoD = venta.total - totalAbonadoD;
+      const saldoP = saldoD * tasaP;
+      const saldoBs = saldoD * tasaD;
 
-      // ============================
-      // ⭐ SALDOS PENDIENTES (CORRECTO)
-      // ============================
-      const saldoD = venta.total - totalAbonadoD; // saldo real en dólares
-      const saldoP = saldoD * tasaP;              // convertir a pesos
-      const saldoBs = saldoD * tasaD;             // convertir a bolívares
-
-      // ============================
-      // 5. ARMAR REPORTE
-      // ============================
       reporte.push({
         venta,
         clienteNombre: cliente ? cliente.nombreCompleto : "SIN NOMBRE",

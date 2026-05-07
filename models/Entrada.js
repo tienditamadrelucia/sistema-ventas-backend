@@ -1,6 +1,5 @@
 import mongoose from "mongoose";
 
-
 const entradaSchema = new mongoose.Schema(
   {
       fecha: { type: Date, required: true },
@@ -17,5 +16,4 @@ const entradaSchema = new mongoose.Schema(
     },
     { timestamps: true }
   );
-
 export default mongoose.model("Entrada", entradaSchema);

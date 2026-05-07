@@ -1,9 +1,24 @@
 import Venta from "../models/dbVentas.js";
 import Vendido from "../models/dbVendidos.js";
+import Contador from "../models/contador.js";
+
+export async function FacturaNro() {
+  const doc = await Contador.findOne({ tipo: "FACTURA" });
+  return doc.valor; // ← NO incrementa
+}
+
+export async function asignarFactura() {
+  const doc = await Contador.findOneAndUpdate(
+    { tipo: "FACTURA" },
+    { $inc: { valor: 1 } },
+    { new: true, upsert: true }
+  );
+  return doc.valor;
+}
 
 export const crearVenta = async (req, res) => {
   try {
-    const venta = new Venta(req.body);
+    const venta = new Ventas(req.body);
     const guardada = await venta.save();
     res.json({
       ok: true,
@@ -24,11 +39,11 @@ export const obtenerVentas = async (req, res) => {
   }
 };
 
-// ⭐ NUEVO CONTROLADOR
+// ⭐ CONTROLADOR: buscar venta por número de factura
 export const buscarVentaPorNumero = async (req, res) => {
   try {
-    const numero = req.params.Factura;    
-    const venta = await Venta.findOne({ Factura: numero });
+    const numero = Number(req.params.numeroFactura);
+    const venta = await Venta.findOne({ factura: numero });
     if (!venta) {
       return res.json({ ok: false, mensaje: "Factura no encontrada" });
     }
@@ -38,4 +53,3 @@ export const buscarVentaPorNumero = async (req, res) => {
     return res.status(500).json({ ok: false, mensaje: "Error interno" });
   }
 };
-
