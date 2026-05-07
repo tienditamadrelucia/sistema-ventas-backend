@@ -1,6 +1,6 @@
-import Venta from "../models/dbVentas.js";
+import ventas from "../models/dbVentas.js";
 import Vendido from "../models/dbVendidos.js";
-import Contador from "../models/contador.js";
+import Contador from "../models/Contador.js";
 
 export async function FacturaNro() {
   const doc = await Contador.findOne({ tipo: "FACTURA" });
