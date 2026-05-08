@@ -79,7 +79,8 @@ app.get("/api/ping", (req, res) => {
     app.use("/api/facturas", reservaRoutes);
     app.use("/api/gastos", gastos);
     app.use("/api/caja", caja);    
-    app.use("/api/tipogastos", TipoGastos);    
+    app.use("/api/tipogastos", TipoGastos);
+    app.use("/api/porstock", PorStock);
 
     // ⭐ 4. MANEJO GLOBAL DE ERRORES
     app.use((err, req, res, next) => {
