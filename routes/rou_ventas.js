@@ -17,6 +17,7 @@ router.get("/", obtenerVentas);
 router.get("/factura-actual", async (req, res) => {
   try {
     const contador = await Contador.findOne({ tipo: "FACTURA" });
+    console.log("factura", contador.valor)
     return res.json({ ok: true, numero: contador.valor });
   } catch (error) {
     console.error("Error obteniendo número actual:", error);
