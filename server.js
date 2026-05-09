@@ -1,7 +1,7 @@
 import express from "express";
 import cors from "cors";
 import { conectarDB } from "./db/conexion.js";
-//import loginRoutes from "./routes/login.js";
+
 import usuarios from "./routes/usuarios.js";
 import categorias from "./routes/categorias.js";
 import productos from "./routes/productos.js";
@@ -16,11 +16,8 @@ import vueltos from "./routes/vueltos.js";
 import logsRoutes from "./routes/logs.js";
 import movimientos from "./routes/rou_movimientos.js";
 import tasas from "./routes/rou_tasas.js";
-//import ventasRouter from "./routes/rou_ventas.js";
-//import vendidosRouter from "./routes/rou_vendidos.js";
 import moneda from "./routes/rou_moneda.js";
 import reservaRoutes from "./routes/rou_reserva.js";
-import FacturaReserva from "./models/FacturaReserva.js";
 import ventas from "./routes/rou_ventas.js";
 import vendidos from "./routes/rou_vendidos.js";
 import gastos from "./routes/rou_gastos.js";
@@ -28,9 +25,8 @@ import caja from "./routes/rou_caja.js";
 import TipoGastos from "./routes/rou_tipogastos.js";
 
 const app = express();
-const cors = require("cors");
 
-app.use(express.json());
+// ⭐ CORS CORRECTO PARA RENDER + VERCEL
 app.use(cors({
   origin: [
     "http://localhost:3000",
@@ -41,8 +37,10 @@ app.use(cors({
   allowedHeaders: ["Content-Type", "Authorization"],
   credentials: true
 }));
-// Necesario para que Render responda preflight
+
+// ⭐ Necesario para preflight OPTIONS
 app.options("*", cors());
+app.use(express.json());
 
 
 // ⭐ 1. PRUEBA PARA SABER SI EXPRESS ESTÁ VIVO
