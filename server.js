@@ -39,7 +39,13 @@ app.use(cors({
 }));
 
 // ⭐ Necesario para preflight OPTIONS
-app.options("*", cors());
+app.options("*", (req, res) => {
+  res.header("Access-Control-Allow-Origin", req.headers.origin || "*");
+  res.header("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS");
+  res.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  res.sendStatus(200);
+});
+
 app.use(express.json());
 
 
@@ -57,7 +63,6 @@ app.get("/api/ping", (req, res) => {
     // ⭐ 3. MONTAR RUTAS SOLO DESPUÉS DE LA DB
     app.use("/api/usuarios", usuarios);
     app.use("/api/categorias", categorias);
-    console.log(">>> RUTA DELETE CATEGORIAS CARGADA <<<");
     app.use("/api/productos", productos);
     app.use("/api/entradas", entradas);
     app.use("/api/salidas", salidas);
