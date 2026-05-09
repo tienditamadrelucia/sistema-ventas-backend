@@ -2,7 +2,6 @@ import express from "express";
 import cors from "cors";
 import { conectarDB } from "./db/conexion.js";
 //import loginRoutes from "./routes/login.js";
-
 import usuarios from "./routes/usuarios.js";
 import categorias from "./routes/categorias.js";
 import productos from "./routes/productos.js";
@@ -29,6 +28,7 @@ import caja from "./routes/rou_caja.js";
 import TipoGastos from "./routes/rou_tipogastos.js";
 
 const app = express();
+const cors = require("cors");
 
 app.use(express.json());
 app.use(cors({
@@ -37,10 +37,12 @@ app.use(cors({
     "http://localhost:5173",
     "https://sistema-ventas-frontend-tan.vercel.app"
   ],
-  methods:["GET", "POST", "PUT", "DELETE"],
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
   credentials: true
 }));
-
+// Necesario para que Render responda preflight
+app.options("*", cors());
 
 
 // ⭐ 1. PRUEBA PARA SABER SI EXPRESS ESTÁ VIVO
@@ -79,8 +81,7 @@ app.get("/api/ping", (req, res) => {
     app.use("/api/facturas", reservaRoutes);
     app.use("/api/gastos", gastos);
     app.use("/api/caja", caja);    
-    app.use("/api/tipogastos", TipoGastos);
-    app.use("/api/porstock", PorStock);
+    app.use("/api/tipogastos", TipoGastos);    
 
     // ⭐ 4. MANEJO GLOBAL DE ERRORES
     app.use((err, req, res, next) => {
