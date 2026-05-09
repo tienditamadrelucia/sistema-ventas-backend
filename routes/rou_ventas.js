@@ -28,9 +28,7 @@ router.get("/factura-actual", async (req, res) => {
 router.post("/guardar", async (req, res) => {
   try {
     const { cliente, fecha, hora, subtotal, iva, total, usuario, estado, items, pago } = req.body;
-
     const numeroFactura = await asignarFactura(); // viene del controlador
-
     const venta = new Ventas({
       factura: numeroFactura,
       fecha,
@@ -43,7 +41,6 @@ router.post("/guardar", async (req, res) => {
       estado
     });
     await venta.save();
-
     for (const item of items) {
       await new Vendidos({
         factura: numeroFactura,
@@ -54,7 +51,6 @@ router.post("/guardar", async (req, res) => {
         total: item.total
       }).save();
     }
-
     if (pago) {
       await new Pago({
         factura: numeroFactura,
@@ -66,7 +62,6 @@ router.post("/guardar", async (req, res) => {
         saldo: pago.saldo
       }).save();
     }
-
     return res.json({ ok: true, numeroFactura });
   } catch (error) {
     console.error("Error guardando factura:", error);
@@ -91,11 +86,9 @@ router.get("/ventas/:fecha", async (req, res) => {
       });
     }
     const ventas = await Moneda.find({ fecha });
-
     const VentasP = ventas.reduce((acc, v) => acc + (v.efectivoP || 0), 0);
     const VentasD = ventas.reduce((acc, v) => acc + (v.efectivoD || 0), 0);
     const VentasBs = ventas.reduce((acc, v) => acc + (v.efectivoBs || 0), 0);
-
     return res.json({
       ok: true,
       VentasP,
@@ -118,15 +111,12 @@ router.get("/ventas/:fecha", async (req, res) => {
 router.get("/detalle/:factura", async (req, res) => {
   try {
     const factura = Number(req.params.factura);
-
     const venta = await Ventas.findOne({ factura });
     if (!venta) {
       return res.json({ ok: false, msg: "Factura no encontrada" });
     }
-
     const detalle = await Vendidos.find({ factura });
     const pagos = await Moneda.find({ factura });
-
     return res.json({
       ok: true,
       venta,
@@ -146,43 +136,30 @@ router.get("/detalle/:factura", async (req, res) => {
 router.get("/reporte/:desde/:hasta", async (req, res) => {
   try {
     const { desde, hasta } = req.params;
-
     const fechaInicio = new Date(desde + "T00:00:00");
     const fechaFin = new Date(hasta + "T23:59:59");
-
     const ventas = await Ventas.find({
       fecha: { $gte: fechaInicio, $lte: fechaFin }
     }).sort({ factura: 1 });
-
     const reporte = [];
-
     let totalVentas = 0;
-
     let totalEfectivoP = 0;
     let totalTransferenciaP = 0;
-
     let totalEfectivoBs = 0;
     let totalTransferenciaBs = 0;
     let totalPuntoBs = 0;
     let totalPagoMovilBs = 0;
-
     let totalEfectivoD = 0;
     let totalZelle = 0;
-
     let totalVueltoP = 0;
     let totalVueltoBs = 0;
     let totalVueltoD = 0;
-
     for (const venta of ventas) {
       const cliente = await Cliente.findOne({ identificacion: venta.cliente });
-
       const vendidos = await Vendidos.find({ factura: venta.factura });
-
       const productos = [];
-
       for (const v of vendidos) {
         const prod = await Producto.findById(v.productoId);
-
         productos.push({
           codigo: prod ? prod.codigo : "N/A",
           descripcion: prod ? prod.descripcion : "Producto no encontrado",
@@ -193,64 +170,49 @@ router.get("/reporte/:desde/:hasta", async (req, res) => {
           total: v.total
         });
       }
-
       const pagosDocs = await Moneda.find({ factura: venta.factura });
-
       let pagos = {
         efectivoP: 0,
         transferenciaP: 0,
-
         efectivoBs: 0,
         transferenciaBs: 0,
         puntoBs: 0,
         pagomovilBs: 0,
-
         efectivoD: 0,
         zelle: 0,
-
         vueltoP: 0,
         vueltoBs: 0,
         vueltoD: 0
       };
-
       for (const p of pagosDocs) {
         if (p.operacion === "VENTA" || p.operacion === "ABONO DE CREDITO") {
           pagos.efectivoP += Number(p.efectivoP || 0);
           pagos.transferenciaP += Number(p.transferenciaP || 0);
-
           pagos.efectivoBs += Number(p.efectivoBs || 0);
           pagos.transferenciaBs += Number(p.transferenciaBs || 0);
           pagos.puntoBs += Number(p.puntoBs || 0);
           pagos.pagomovilBs += Number(p.pagomovilBs || 0);
-
           pagos.efectivoD += Number(p.efectivoD || 0);
           pagos.zelle += Number(p.zelle || 0);
         }
-
         if (p.operacion === "VUELTOS") {
           pagos.vueltoP += Number(p.efectivoP || 0);
           pagos.vueltoBs += Number(p.efectivoBs || 0);
           pagos.vueltoD += Number(p.efectivoD || 0);
         }
       }
-
       totalVentas += Number(venta.total || 0);
-
       totalEfectivoP += pagos.efectivoP + pagos.vueltoP;
       totalTransferenciaP += pagos.transferenciaP;
-
       totalEfectivoBs += pagos.efectivoBs + pagos.vueltoBs;
       totalTransferenciaBs += pagos.transferenciaBs;
       totalPuntoBs += pagos.puntoBs;
       totalPagoMovilBs += pagos.pagomovilBs;
-
       totalEfectivoD += pagos.efectivoD + pagos.vueltoD;
       totalZelle += pagos.zelle;
-
       totalVueltoP += pagos.vueltoP;
       totalVueltoBs += pagos.vueltoBs;
       totalVueltoD += pagos.vueltoD;
-
       reporte.push({
         venta,
         clienteNombre: cliente ? cliente.nombreCompleto : "SIN NOMBRE",
@@ -258,7 +220,6 @@ router.get("/reporte/:desde/:hasta", async (req, res) => {
         pagos
       });
     }
-
     res.json({
       ok: true,
       reporte,
