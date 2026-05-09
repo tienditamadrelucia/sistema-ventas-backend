@@ -100,7 +100,7 @@ app.get("/api/ping", (req, res) => {
     const PORT = process.env.PORT || 4000;
     app.listen(PORT, () => {
       console.log("🚀 Servidor backend en puerto", PORT);
-    });
+    }); 
 
   } catch (error) {
     console.error("❌ ERROR CONECTANDO A LA DB:", error);
