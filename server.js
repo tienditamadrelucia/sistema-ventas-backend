@@ -78,8 +78,8 @@ app.get("/api/ping", (req, res) => {
     app.use("/api/tasas", tasas);
     //app.use("/api/ventas", ventasRouter);
     //app.use("/api/vendidos", vendidosRouter);
-    app.use("/api/ventas", ventas);
     app.use("/api/vendidos", vendidos);
+    app.use("/api/ventas", ventas);    
     app.use("/api/moneda", moneda);
     app.use("/api/facturas", reservaRoutes);
     app.use("/api/gastos", gastos);
