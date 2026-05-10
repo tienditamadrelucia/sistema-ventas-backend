@@ -18,7 +18,7 @@ export async function asignarFactura() {
 
 export const crearVenta = async (req, res) => {
   try {
-    const venta = new Ventas(req.body);
+    const venta = new ventas(req.body);
     const guardada = await venta.save();
     res.json({
       ok: true,
@@ -32,7 +32,7 @@ export const crearVenta = async (req, res) => {
 
 export const obtenerVentas = async (req, res) => {
   try {
-    const ventas = await Venta.find().sort({ createdAt: -1 });
+    const venta = await ventas.find().sort({ createdAt: -1 });
     res.json(ventas);
   } catch (error) {
     res.status(500).json({ error: "Error al obtener ventas" });
@@ -43,13 +43,14 @@ export const obtenerVentas = async (req, res) => {
 export const buscarVentaPorNumero = async (req, res) => {
   try {
     const numero = Number(req.params.numeroFactura);
-    const venta = await Venta.findOne({ factura: numero });
+    const venta = await ventas.findOne({ factura: numero });
     if (!venta) {
       return res.json({ ok: false, mensaje: "Factura no encontrada" });
     }
-    return res.json({ ok: true, venta });
+    return res.json({ ok: true, ventas });
   } catch (error) {
     console.error("Backend dice: Error consultando factura:", error);
     return res.status(500).json({ ok: false, mensaje: "Error interno" });
   }
 };
+ 

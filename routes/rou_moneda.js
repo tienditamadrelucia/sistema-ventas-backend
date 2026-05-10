@@ -17,14 +17,11 @@ router.post("/", async (req, res) => {
     });
   } catch (error) {
   console.error("❌ ERROR GUARDANDO MONEDA:", error);
-
   let mensaje = "Error en el servidor";
-
   // Detectar error específico de fecha requerida
   if (error?.errors?.fecha?.kind === "required") {
     mensaje = "Falta ingresar la fecha del pago";
   }
-
   return res.status(500).json({
     ok: false,
     mensaje,
@@ -70,9 +67,7 @@ router.get("/factura/:numero", async (req, res) => {
   try {
     const numero = req.params.numero;
     const lista = await Moneda.find({ factura: numero });
-
     return res.json({ ok: true, lista });
-
   } catch (error) {
     console.error("Error buscando movimientos por factura:", error);
     return res.status(500).json({ ok: false, mensaje: "Error en el servidor" });
