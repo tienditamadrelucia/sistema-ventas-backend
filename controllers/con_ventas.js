@@ -17,6 +17,7 @@ export async function asignarFactura() {
 }
 
 export const crearVenta = async (req, res) => {
+  console.log("🟡 RECIBIDO EN CREAR VENTA:", req.body);
   try {
     const venta = new ventas(req.body);
     const guardada = await venta.save();
@@ -26,6 +27,7 @@ export const crearVenta = async (req, res) => {
     });
   } catch (error) {
     console.error("Error creando venta:", error);
+    console.error("🔴 ERROR EXACTO EN CREAR VENTA:", error.message);
     res.status(500).json({ ok: false, error: "Error al guardar la venta" });
   }
 };
