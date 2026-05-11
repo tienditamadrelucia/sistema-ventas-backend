@@ -13,6 +13,22 @@ const router = express.Router();
 router.post("/", crearVenta);
 router.get("/", obtenerVentas);
 
+// Buscar venta por número de factura
+router.get("/:factura", async (req, res) => {
+  try {
+    const factura = Number(req.params.factura);
+    const venta = await Ventas.findOne({ factura });
+    if (!venta) {
+      return res.json({ ok: false, msg: "Factura no encontrada" });
+    }
+    return res.json({ ok: true, venta });
+  } catch (error) {
+    console.error("Error buscando factura:", error);
+    return res.status(500).json({ ok: false, msg: "Error buscando factura" });
+  }
+});
+
+
 // Número actual de factura (NO incrementa)
 router.get("/factura-actual", async (req, res) => {
   try {
@@ -256,17 +272,13 @@ router.get("/reporte/:desde/:hasta", async (req, res) => {
 router.get("/reporte-creditos/:desde/:hasta", async (req, res) => {
   try {
     const { desde, hasta } = req.params;
-
     const fechaInicio = new Date(desde + "T00:00:00");
     const fechaFin = new Date(hasta + "T23:59:59");
-
     const ventas = await Ventas.find({
       fecha: { $gte: fechaInicio, $lte: fechaFin },
       estado: "CREDITO"
     }).sort({ factura: 1 });
-
     const reporte = [];
-
     const hoy = new Date().toISOString().slice(0, 10);
     const tasaHoy = await Tasas.findOne({ fecha: hoy });
     if (!tasaHoy) {
@@ -274,17 +286,12 @@ router.get("/reporte-creditos/:desde/:hasta", async (req, res) => {
     }
     const tasaP = Number(tasaHoy.tasaP);
     const tasaD = Number(tasaHoy.tasaD);
-
     for (const venta of ventas) {
       const cliente = await Cliente.findOne({ identificacion: venta.cliente });
-
       const vendidos = await Vendidos.find({ factura: venta.factura });
-
       const productos = [];
-
       for (const v of vendidos) {
         const prod = await Producto.findById(v.productoId);
-
         productos.push({
           codigo: prod ? prod.codigo : "N/A",
           descripcion: prod ? prod.descripcion : "Producto no encontrado",
@@ -295,15 +302,12 @@ router.get("/reporte-creditos/:desde/:hasta", async (req, res) => {
           total: v.total
         });
       }
-
       const abonosDocs = await Moneda.find({
         factura: venta.factura,
         operacion: "ABONO DE CREDITO"
       }).sort({ fecha: 1 });
-
       const abonos = [];
       let totalAbonadoD = 0;
-
       for (const a of abonosDocs) {
         abonos.push({
           fecha: a.fecha,
@@ -316,19 +320,15 @@ router.get("/reporte-creditos/:desde/:hasta", async (req, res) => {
           efectivoD: a.efectivoD,
           zelle: a.zelle
         });
-
         const abonoEnD =
           (a.efectivoP + a.transferenciaP) / tasaP +
           (a.efectivoBs + a.transferenciaBs + a.puntoBs + a.pagomovilBs) / tasaD +
           (a.efectivoD + a.zelle);
-
         totalAbonadoD += abonoEnD;
       }
-
       const saldoD = venta.total - totalAbonadoD;
       const saldoP = saldoD * tasaP;
       const saldoBs = saldoD * tasaD;
-
       reporte.push({
         venta,
         clienteNombre: cliente ? cliente.nombreCompleto : "SIN NOMBRE",
@@ -341,9 +341,7 @@ router.get("/reporte-creditos/:desde/:hasta", async (req, res) => {
         }
       });
     }
-
     res.json({ ok: true, reporte });
-
   } catch (error) {
     console.log("ERROR REPORTE CREDITOS:", error);
     res.status(500).json({ ok: false, msg: "Error generando reporte de créditos" });
