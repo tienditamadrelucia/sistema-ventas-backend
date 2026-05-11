@@ -166,7 +166,7 @@ router.get("/reporte/:desde/:hasta", async (req, res) => {
     let totalEfectivoBs = 0;
     let totalTransferenciaBs = 0;
     let totalPuntoBs = 0;
-    let totalPagoMovilBs = 0;
+    let totalPagomovilBs = 0;
     let totalEfectivoD = 0;
     let totalZelle = 0;
     let totalVueltoP = 0;
@@ -225,7 +225,7 @@ router.get("/reporte/:desde/:hasta", async (req, res) => {
       totalEfectivoBs += pagos.efectivoBs + pagos.vueltoBs;
       totalTransferenciaBs += pagos.transferenciaBs;
       totalPuntoBs += pagos.puntoBs;
-      totalPagoMovilBs += pagos.pagomovilBs;
+      totalPagomovilBs += pagos.pagomovilBs;
       totalEfectivoD += pagos.efectivoD + pagos.vueltoD;
       totalZelle += pagos.zelle;
       totalVueltoP += pagos.vueltoP;
@@ -247,7 +247,7 @@ router.get("/reporte/:desde/:hasta", async (req, res) => {
           totalEfectivoBs +
           totalTransferenciaBs +
           totalPuntoBs +
-          totalPagoMovilBs +
+          totalPagomovilBs +
           totalVueltoBs,
         totalDolares: totalEfectivoD + totalZelle + totalVueltoD,
         totalEfectivoP,
@@ -255,7 +255,7 @@ router.get("/reporte/:desde/:hasta", async (req, res) => {
         totalEfectivoBs,
         totalTransferenciaBs,
         totalPuntoBs,
-        totalPagoMovilBs,
+        totalPagomovilBs,
         totalEfectivoD,
         totalZelle,
         totalVueltoP,
