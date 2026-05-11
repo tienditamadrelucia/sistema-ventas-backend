@@ -26,7 +26,7 @@ router.post("/", async (req, res) => {
 // 🟢 TODOS LOS CLIENTES
 router.get("/todos", async (req, res) => {  
      try {
-       const clientes = await Cliente.find(); // SIN LIMIT
+       const clientes = await Cliente.find().sort({nombreCompleto: 1}); // SIN LIMIT
        res.json(clientes);
      } catch (error) {
        console.error("Error consultando todos los clientes:", error);

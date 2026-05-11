@@ -1,6 +1,8 @@
 import Vendidos from "../models/dbVendidos.js";
 
 export const crearVendido = async (req, res) => {
+  console.log("📦 DATA RECIBIDA EN /api/vendidos:", req.body);
+
   try {
     const vendido = new Vendidos(req.body);
     await vendido.save();
