@@ -4,21 +4,6 @@ import Contador from "../models/Contador.js";
 
 const router = express.Router();
 
-
-router.get("/factura-actual", async (req, res) => {
-  try {
-    const db = conectarDB();
-    const contador = await db.collection("Contadors").findOne({ tipo: "FACTURA" });
-    if (!contador) {
-      return res.status(404).json({ ok: false, msg: "No existe contador FACTURA" });
-    }
-    return res.json({ ok: true, numero: contador.valor });
-  } catch (error) {
-    console.error("Error obteniendo número actual:", error);
-    return res.status(500).json({ ok: false, msg: "Error obteniendo número actual" });
-  }
-});
-
 router.post("/", async (req, res) => {
   try {
     const db = conectarDB();

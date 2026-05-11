@@ -24,18 +24,20 @@ router.get("/:factura", async (req, res) => {
   }
 });
 
-
-
 // Número actual de factura (NO incrementa)
 router.get("/factura-actual", async (req, res) => {
   try {
-    const contador = await Contador.findOne({ tipo: "FACTURA" });    
+    const db = conectarDB();
+    const contador = await db.collection("contadors").findOne({ tipo: "FACTURA" });
+    if (!contador) {
+      return res.status(404).json({ ok: false, msg: "No existe contador FACTURA" });
+    }
     return res.json({ ok: true, numero: contador.valor });
   } catch (error) {
     console.error("Error obteniendo número actual:", error);
     return res.status(500).json({ ok: false, msg: "Error obteniendo número actual" });
   }
-}); 
+});
 
 // Guardar factura completa (venta + vendidos + pago)
 router.post("/guardar", async (req, res) => {
