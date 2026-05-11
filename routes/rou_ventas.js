@@ -17,16 +17,13 @@ router.get("/", obtenerVentas);
 router.get("/:factura", async (req, res) => {
   try {
     const factura = Number(req.params.factura);
-    const venta = await Ventas.findOne({ factura });
-    if (!venta) {
-      return res.json({ ok: false, msg: "Factura no encontrada" });
-    }
-    return res.json({ ok: true, venta });
+    const vendidos = await Vendidos.find({ factura }).populate("productoId");
+    return res.json({ ok: true, vendidos });
   } catch (error) {
-    console.error("Error buscando factura:", error);
-    return res.status(500).json({ ok: false, msg: "Error buscando factura" });
+    return res.status(500).json({ ok: false, msg: "Error cargando vendidos" });
   }
 });
+
 
 
 // Número actual de factura (NO incrementa)
