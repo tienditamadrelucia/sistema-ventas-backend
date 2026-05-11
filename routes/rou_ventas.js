@@ -15,6 +15,7 @@ router.get("/", obtenerVentas);
 
 // Número actual de factura (NO incrementa)
 router.get("/factura-actual", async (req, res) => {
+  console.log("factura-actual");
   try {
     const db = conectarDB();
     const contador = await db.collection("contadors").findOne({ tipo: "FACTURA" });
