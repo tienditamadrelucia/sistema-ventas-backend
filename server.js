@@ -50,6 +50,7 @@ app.use(express.json());
 
 
 // ⭐ 1. PRUEBA PARA SABER SI EXPRESS ESTÁ VIVO
+console.log(">>> BACKEND INICIADO EN ESTA VERSION <<<");
 app.get("/api/ping", (req, res) => {
   res.json({ ok: true });
 });
