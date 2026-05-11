@@ -18,6 +18,7 @@ router.get("/factura-actual", async (req, res) => {
   try {
     const db = conectarDB();
     const contador = await db.collection("contadors").findOne({ tipo: "FACTURA" });
+    console.log("contador ", contador);
     if (!contador) {
       return res.status(404).json({ ok: false, msg: "No existe contador FACTURA" });
     }
