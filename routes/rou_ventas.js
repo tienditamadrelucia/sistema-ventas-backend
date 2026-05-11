@@ -13,17 +13,6 @@ const router = express.Router();
 router.post("/", crearVenta);
 router.get("/", obtenerVentas);
 
-// Buscar venta por número de factura
-router.get("/:factura", async (req, res) => {
-  try {
-    const factura = Number(req.params.factura);
-    const vendidos = await Vendidos.find({ factura }).populate("productoId");
-    return res.json({ ok: true, vendidos });
-  } catch (error) {
-    return res.status(500).json({ ok: false, msg: "Error cargando vendidos" });
-  }
-});
-
 // Número actual de factura (NO incrementa)
 router.get("/factura-actual", async (req, res) => {
   try {
@@ -36,6 +25,17 @@ router.get("/factura-actual", async (req, res) => {
   } catch (error) {
     console.error("Error obteniendo número actual:", error);
     return res.status(500).json({ ok: false, msg: "Error obteniendo número actual" });
+  }
+});
+
+// Buscar venta por número de factura
+router.get("/:factura", async (req, res) => {
+  try {
+    const factura = Number(req.params.factura);
+    const vendidos = await Vendidos.find({ factura }).populate("productoId");
+    return res.json({ ok: true, vendidos });
+  } catch (error) {
+    return res.status(500).json({ ok: false, msg: "Error cargando vendidos" });
   }
 });
 
