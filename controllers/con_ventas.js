@@ -45,14 +45,24 @@ export const obtenerVentas = async (req, res) => {
 export const buscarVentaPorNumero = async (req, res) => {
   try {
     const numero = Number(req.params.numeroFactura);
+    // 1) Buscar la venta
     const venta = await ventas.findOne({ factura: numero });
     if (!venta) {
       return res.json({ ok: false, mensaje: "Factura no encontrada" });
     }
-    return res.json({ ok: true, venta });
+    // 2) Buscar los productos vendidos
+    const vendidos = await Vendidos.find({ factura: numero })
+      .populate("productoId"); // ⭐ IMPORTANTE
+    // 3) Respuesta completa
+    return res.json({
+      ok: true,
+      venta,
+      vendidos
+    });
   } catch (error) {
     console.error("Backend dice: Error consultando factura:", error);
     return res.status(500).json({ ok: false, mensaje: "Error interno" });
   }
 };
+
  
