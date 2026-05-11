@@ -1,5 +1,5 @@
 import express from "express";
-import { conectarDB } from "./db/conexion.js";
+import { conectarDB } from "../db/conexion.js";
 import Ventas from "../models/dbVentas.js";
 import Vendidos from "../models/dbVendidos.js";
 import Moneda from "../models/dbMoneda.js";
