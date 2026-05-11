@@ -49,7 +49,7 @@ export const buscarVentaPorNumero = async (req, res) => {
     if (!venta) {
       return res.json({ ok: false, mensaje: "Factura no encontrada" });
     }
-    return res.json({ ok: true, ventas });
+    return res.json({ ok: true, venta });
   } catch (error) {
     console.error("Backend dice: Error consultando factura:", error);
     return res.status(500).json({ ok: false, mensaje: "Error interno" });
