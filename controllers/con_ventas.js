@@ -16,11 +16,17 @@ export async function asignarFactura() {
   return doc.valor;
 }
 
-export const crearVenta = async (req, res) => {
-  console.log("🟡 RECIBIDO EN CREAR VENTA:", req.body);
+export const crearVenta = async (req, res) => {  
   try {
+    // 1. Guardar la venta
     const venta = new ventas(req.body);
     const guardada = await venta.save();
+    // 2. Incrementar el contador de factura
+    await Contador.findOneAndUpdate(
+      { tipo: "FACTURA" },
+      { $inc: { valor: 1 } }
+    );
+    // 3. Responder al frontend
     res.json({
       ok: true,
       idVenta: guardada._id
@@ -31,6 +37,7 @@ export const crearVenta = async (req, res) => {
     res.status(500).json({ ok: false, error: "Error al guardar la venta" });
   }
 };
+
 
 export const obtenerVentas = async (req, res) => {
   try {
