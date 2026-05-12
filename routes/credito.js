@@ -8,12 +8,10 @@ router.post("/", async (req, res) => {
   try {
     const db = conectarDB();
     const credito = req.body;
-
     const resultado = await db.collection("credito").insertOne({
       ...credito,
       fechaRegistro: new Date()
     });
-
     res.json({ ok: true, id: resultado.insertedId });
   } catch (error) {
     res.status(500).json({ ok: false, error: "Error guardando crédito" });
@@ -25,9 +23,7 @@ router.get("/:factura", async (req, res) => {
   try {
     const db = conectarDB();
     const factura = Number(req.params.factura);
-
     const credito = await db.collection("credito").findOne({ factura });
-
     res.json(credito);
   } catch (error) {
     res.status(500).json({ ok: false, error: "Error consultando crédito" });
@@ -39,7 +35,6 @@ router.get("/", async (req, res) => {
   try {
     const db = conectarDB();
     const creditos = await db.collection("credito").find().toArray();
-
     res.json(creditos);
   } catch (error) {
     res.status(500).json({ ok: false, error: "Error listando créditos" });
