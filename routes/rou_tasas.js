@@ -83,11 +83,8 @@ router.get("/todas", async (req, res) => {
 // 📌 Obtener tasa por fecha
 router.get("/por-fecha/:fecha", async (req, res) => {
   try {
-    const fecha = normalizarUTC(req.params.fecha);
-    const fin = new Date(fecha.getTime() + 86400000);
-    const tasa = await Tasas.findOne({
-      fecha: { $gte: fecha, $lt: fin }
-    });
+    const fecha = req.params.fecha; // usarla tal cual, sin convertir
+    const tasa = await Tasas.findOne({ fecha });
     if (!tasa) {
       return res.status(404).json({ ok: false, msg: "No hay tasas para esa fecha" });
     }
@@ -96,5 +93,6 @@ router.get("/por-fecha/:fecha", async (req, res) => {
     return res.status(500).json({ ok: false, msg: "Error obteniendo tasa por fecha" });
   }
 });
+
 
 export default router;
