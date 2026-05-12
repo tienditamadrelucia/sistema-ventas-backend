@@ -100,6 +100,4 @@ router.get("/por-fecha/:fecha", async (req, res) => {
   }
 });
 
-
-
 export default router;
