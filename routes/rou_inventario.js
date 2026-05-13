@@ -10,7 +10,6 @@ import mongoose from "mongoose";
 // Si ya tienes ventas, importa:
 //import Venta from "../models/ventas.js";
 // Si NO existe ventas aún, comenta esta línea
-console.log(">>> RUTA INVENTARIO NUEVA CARGADA <<<");
 
 const router = express.Router();
 
@@ -216,8 +215,7 @@ router.get("/stock-real/:codigo", async (req, res) => {
 
 router.get("/debug-productos", async (req, res) => {
   try {
-    const productos = await Producto.find({}); // ← TODOS los productos, TODOS los campos
-    console.log("DEBUG PRODUCTOS:", productos);
+    const productos = await Producto.find({}); // ← TODOS los productos, TODOS los campos    
     res.json(productos);
   } catch (error) {
     console.error("ERROR DEBUG PRODUCTOS:", error);

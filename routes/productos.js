@@ -26,9 +26,7 @@ async function ordenarProductosDB() {
   // Guardar el orden en un campo "orden"
   for (let i = 0; i < productos.length; i++) {
     await Producto.findByIdAndUpdate(productos[i]._id, { orden: i });
-  }
-
-  console.log("🔥 Productos ordenados por CATEGORÍA y luego por CÓDIGO");
+  }  
 }
 
 // Obtener todos los productos
@@ -46,9 +44,7 @@ router.get("/", async (req, res) => {
 
 
 // Obtener el próximo código disponible
-router.get("/proximo-codigo", async (req, res) => {
-
-  console.log("🔥🔥🔥 ENTRÓ A LA RUTA /proximo-codigo 🔥🔥🔥");
+router.get("/proximo-codigo", async (req, res) => {  
   try {
     const ultimo = await Producto.findOne().sort({ codigo: -1 });
     const proximo = ultimo ? Number(ultimo.codigo) + 1 : 1;
