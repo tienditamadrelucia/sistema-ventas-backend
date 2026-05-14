@@ -343,7 +343,7 @@ router.get("/reporte-creditos/:desde/:hasta", async (req, res) => {
   }
 });
 
-router.put("/ventas/cambiar-estado/:id", async (req, res) => {
+router.put("/cambiar-estado/:id", async (req, res) => {
   try {
     const { id } = req.params;
     const { estado } = req.body;
