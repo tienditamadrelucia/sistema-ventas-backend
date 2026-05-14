@@ -274,7 +274,6 @@ router.get("/reporte/:desde/:hasta", async (req, res) => {
   }
 });
 
-
 // REPORTE CRÉDITOS
 router.get("/reporte-creditos/:desde/:hasta", async (req, res) => {
   try {
@@ -352,6 +351,21 @@ router.get("/reporte-creditos/:desde/:hasta", async (req, res) => {
   } catch (error) {
     console.log("ERROR REPORTE CREDITOS:", error);
     res.status(500).json({ ok: false, msg: "Error generando reporte de créditos" });
+  }
+});
+
+router.put("/ventas/cambiar-estado/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { estado } = req.body;
+    const venta = await Ventas.findByIdAndUpdate(
+      id,
+      { estado },
+      { new: true }
+    );
+    res.json({ ok: true, venta });
+  } catch (error) {
+    res.status(500).json({ ok: false, msg: "Error actualizando estado" });
   }
 });
 
