@@ -31,17 +31,6 @@ router.get("/factura-actual", async (req, res) => {
   }
 });
 
-// Buscar venta por número de factura
-router.get("/:factura", async (req, res) => {
-  try {
-    const factura = Number(req.params.factura);
-    const vendidos = await Vendidos.find({ factura }).populate("productoId");
-    return res.json({ ok: true, vendidos });
-  } catch (error) {
-    return res.status(500).json({ ok: false, msg: "Error cargando vendidos" });
-  }
-});
-
 // Guardar factura completa (venta + vendidos + pago)
 router.post("/guardar", async (req, res) => {
   try {
@@ -366,6 +355,17 @@ router.put("/ventas/cambiar-estado/:id", async (req, res) => {
     res.json({ ok: true, venta });
   } catch (error) {
     res.status(500).json({ ok: false, msg: "Error actualizando estado" });
+  }
+});
+
+// Buscar venta por número de factura
+router.get("/:factura", async (req, res) => {
+  try {
+    const factura = Number(req.params.factura);
+    const vendidos = await Vendidos.find({ factura }).populate("productoId");
+    return res.json({ ok: true, vendidos });
+  } catch (error) {
+    return res.status(500).json({ ok: false, msg: "Error cargando vendidos" });
   }
 });
 
