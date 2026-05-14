@@ -2,11 +2,9 @@ import express from "express";
 import Categoria from "../models/Categoria.js";
 import Producto from "../models/Producto.js";
 
-console.log(">>> RUTA DELETE CATEGORIAS CARGADA <<<");
 const router = express.Router();
 // Obtener todas
-router.get("/", async (req, res) => {
-    console.log(">>> RUTA DELETE CATEGORIAS CARGADA <<<");
+router.get("/", async (req, res) => {    
     const categorias = await Categoria.find().sort({ descripcion: 1 }); // ⭐ orden alfabético
     res.json(categorias);
 });
@@ -37,8 +35,7 @@ router.post("/", async (req, res) => {
 });
 
 // Actualizar
-router.put("/:id", async (req, res) => {
-  console.log(">>> RUTA DELETE CATEGORIAS CARGADA <<<");
+router.put("/:id", async (req, res) => {  
   try {
     const { codigo, descripcion } = req.body;
     // Validar duplicado en otras categorías
@@ -66,8 +63,7 @@ router.put("/:id", async (req, res) => {
 
  
 // Eliminar categoría
-router.delete("/:id", async (req, res) => {  
-  console.log(">>> RUTA DELETE CATEGORIAS CARGADA <<<");
+router.delete("/:id", async (req, res) => {    
   try {
     const { id } = req.params;
     console.log("id ", id);

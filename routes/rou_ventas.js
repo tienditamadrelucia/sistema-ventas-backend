@@ -151,124 +151,129 @@ router.get("/detalle/:factura", async (req, res) => {
 });
 
 // REPORTE GENERAL
+// REPORTE DIARIO BASADO EN MOVIMIENTOS DE CAJA (dbMoneda)
 router.get("/reporte/:desde/:hasta", async (req, res) => {
   try {
     const { desde, hasta } = req.params;
     const fechaInicio = new Date(desde + "T00:00:00");
     const fechaFin = new Date(hasta + "T23:59:59");
-    const ventas = await Ventas.find({
+    // 1. BUSCAR TODOS LOS MOVIMIENTOS DE DINERO DEL DÍA
+    const movimientos = await Moneda.find({
       fecha: { $gte: fechaInicio, $lte: fechaFin }
     }).sort({ factura: 1 });
+    if (movimientos.length === 0) {
+      return res.json({ ok: false, msg: "No hay movimientos en este rango" });
+    }
+    // Agrupar por factura
+    const facturasMap = {};
+    for (const mov of movimientos) {
+      if (!facturasMap[mov.factura]) {
+        facturasMap[mov.factura] = {
+          factura: mov.factura,
+          pagos: [],
+          totales: {
+            efectivoP: 0,
+            transferenciaP: 0,
+            efectivoBs: 0,
+            transferenciaBs: 0,
+            puntoBs: 0,
+            pagomovilBs: 0,
+            efectivoD: 0,
+            zelle: 0,
+            vueltoP: 0,
+            vueltoBs: 0,
+            vueltoD: 0
+          }
+        };
+      }
+      // Guardar movimiento
+      facturasMap[mov.factura].pagos.push(mov);
+      // Acumular totales
+      if (mov.operacion === "VENTA" || mov.operacion === "ABONO DE CREDITO") {
+        facturasMap[mov.factura].totales.efectivoP += mov.efectivoP;
+        facturasMap[mov.factura].totales.transferenciaP += mov.transferenciaP;
+        facturasMap[mov.factura].totales.efectivoBs += mov.efectivoBs;
+        facturasMap[mov.factura].totales.transferenciaBs += mov.transferenciaBs;
+        facturasMap[mov.factura].totales.puntoBs += mov.puntoBs;
+        facturasMap[mov.factura].totales.pagomovilBs += mov.pagomovilBs;
+        facturasMap[mov.factura].totales.efectivoD += mov.efectivoD;
+        facturasMap[mov.factura].totales.zelle += mov.zelle;
+      }
+      if (mov.operacion === "VUELTOS") {
+        facturasMap[mov.factura].totales.vueltoP += mov.efectivoP;
+        facturasMap[mov.factura].totales.vueltoBs += mov.efectivoBs;
+        facturasMap[mov.factura].totales.vueltoD += mov.efectivoD;
+      }
+    }
     const reporte = [];
-    let totalVentas = 0;
-    let totalEfectivoP = 0;
-    let totalTransferenciaP = 0;
-    let totalEfectivoBs = 0;
-    let totalTransferenciaBs = 0;
-    let totalPuntoBs = 0;
-    let totalPagomovilBs = 0;
-    let totalEfectivoD = 0;
-    let totalZelle = 0;
-    let totalVueltoP = 0;
-    let totalVueltoBs = 0;
-    let totalVueltoD = 0;
-    for (const venta of ventas) {
-      const cliente = await Cliente.findOne({ identificacion: venta.cliente });
-      const vendidos = await Vendidos.find({ factura: venta.factura });
+    let totalesGlobales = {
+      totalEfectivoP: 0,
+      totalTransferenciaP: 0,
+      totalEfectivoBs: 0,
+      totalTransferenciaBs: 0,
+      totalPuntoBs: 0,
+      totalPagomovilBs: 0,
+      totalEfectivoD: 0,
+      totalZelle: 0,
+      totalVueltoP: 0,
+      totalVueltoBs: 0,
+      totalVueltoD: 0
+    };
+    // 2. COMPLETAR INFORMACIÓN DE CADA FACTURA
+    for (const factura in facturasMap) {
+      const info = facturasMap[factura];
+      const venta = await Ventas.findOne({ factura });
+      const cliente = venta
+        ? await Cliente.findOne({ identificacion: venta.cliente })
+        : null;
+      const vendidos = venta
+        ? await Vendidos.find({ factura })
+        : [];
       const productos = [];
       for (const v of vendidos) {
         const prod = await Producto.findById(v.productoId);
         productos.push({
-          codigo: prod ? prod.codigo : "N/A",
-          descripcion: prod ? prod.descripcion : "Producto no encontrado",
-          precioSistema: prod ? prod.venta : 0,
+          codigo: prod?.codigo || "N/A",
+          descripcion: prod?.descripcion || "Producto no encontrado",
+          precioSistema: prod?.venta || 0,
           cantidad: v.cantidad,
           precioVenta: v.precio,
           dscto: v.dscto,
           total: v.total
         });
       }
-      const pagosDocs = await Moneda.find({ factura: venta.factura });
-      let pagos = {
-        efectivoP: 0,
-        transferenciaP: 0,
-        efectivoBs: 0,
-        transferenciaBs: 0,
-        puntoBs: 0,
-        pagomovilBs: 0,
-        efectivoD: 0,
-        zelle: 0,
-        vueltoP: 0,
-        vueltoBs: 0,
-        vueltoD: 0
-      };
-      for (const p of pagosDocs) {
-        if (p.operacion === "VENTA" || p.operacion === "ABONO DE CREDITO") {
-          pagos.efectivoP += Number(p.efectivoP || 0);
-          pagos.transferenciaP += Number(p.transferenciaP || 0);
-          pagos.efectivoBs += Number(p.efectivoBs || 0);
-          pagos.transferenciaBs += Number(p.transferenciaBs || 0);
-          pagos.puntoBs += Number(p.puntoBs || 0);
-          pagos.pagomovilBs += Number(p.pagomovilBs || 0);
-          pagos.efectivoD += Number(p.efectivoD || 0);
-          pagos.zelle += Number(p.zelle || 0);
-        }
-        if (p.operacion === "VUELTOS") {
-          pagos.vueltoP += Number(p.efectivoP || 0);
-          pagos.vueltoBs += Number(p.efectivoBs || 0);
-          pagos.vueltoD += Number(p.efectivoD || 0);
-        }
-      }
-      totalVentas += Number(venta.total || 0);
-      totalEfectivoP += pagos.efectivoP + pagos.vueltoP;
-      totalTransferenciaP += pagos.transferenciaP;
-      totalEfectivoBs += pagos.efectivoBs + pagos.vueltoBs;
-      totalTransferenciaBs += pagos.transferenciaBs;
-      totalPuntoBs += pagos.puntoBs;
-      totalPagomovilBs += pagos.pagomovilBs;
-      totalEfectivoD += pagos.efectivoD + pagos.vueltoD;
-      totalZelle += pagos.zelle;
-      totalVueltoP += pagos.vueltoP;
-      totalVueltoBs += pagos.vueltoBs;
-      totalVueltoD += pagos.vueltoD;
+      // Acumular totales globales
+      const t = info.totales;
+      totalesGlobales.totalEfectivoP += t.efectivoP + t.vueltoP;
+      totalesGlobales.totalTransferenciaP += t.transferenciaP;
+      totalesGlobales.totalEfectivoBs += t.efectivoBs + t.vueltoBs;
+      totalesGlobales.totalTransferenciaBs += t.transferenciaBs;
+      totalesGlobales.totalPuntoBs += t.puntoBs;
+      totalesGlobales.totalPagomovilBs += t.pagomovilBs;
+      totalesGlobales.totalEfectivoD += t.efectivoD + t.vueltoD;
+      totalesGlobales.totalZelle += t.zelle;
+      totalesGlobales.totalVueltoP += t.vueltoP;
+      totalesGlobales.totalVueltoBs += t.vueltoBs;
+      totalesGlobales.totalVueltoD += t.vueltoD;
       reporte.push({
+        factura,
         venta,
-        clienteNombre: cliente ? cliente.nombreCompleto : "SIN NOMBRE",
+        clienteNombre: cliente?.nombreCompleto || "SIN NOMBRE",
         productos,
-        pagos
+        pagos: info.totales
       });
     }
     res.json({
       ok: true,
       reporte,
-      totales: {
-        totalPesos: totalEfectivoP + totalTransferenciaP + totalVueltoP,
-        totalBolivares:
-          totalEfectivoBs +
-          totalTransferenciaBs +
-          totalPuntoBs +
-          totalPagomovilBs +
-          totalVueltoBs,
-        totalDolares: totalEfectivoD + totalZelle + totalVueltoD,
-        totalEfectivoP,
-        totalTransferenciaP,
-        totalEfectivoBs,
-        totalTransferenciaBs,
-        totalPuntoBs,
-        totalPagomovilBs,
-        totalEfectivoD,
-        totalZelle,
-        totalVueltoP,
-        totalVueltoBs,
-        totalVueltoD
-      }
+      totales: totalesGlobales
     });
-
   } catch (error) {
     console.log("ERROR REPORTE:", error);
     res.status(500).json({ ok: false, msg: "Error generando reporte" });
   }
 });
+
 
 // REPORTE CRÉDITOS
 router.get("/reporte-creditos/:desde/:hasta", async (req, res) => {
