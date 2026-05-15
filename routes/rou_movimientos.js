@@ -1,7 +1,8 @@
 import express from "express";
 import Entrada from "../models/Entrada.js";
 import Salida from "../models/dbSalidas.js";
-//import Venta from "../models/Venta.js";
+import Venta from "../models/dbVentas.js";
+import Vendidos from "../models/dbVendidos.js";
 
 const router = express.Router();
 
