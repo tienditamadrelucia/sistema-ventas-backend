@@ -22,4 +22,15 @@ router.delete("/eliminar/ventas/:id", eliminarVentaDuplicada);
 router.get("/duplicados/vendidos", detectarDuplicadosVendidos);
 router.delete("/eliminar/vendidos/:id", eliminarVendidoDuplicado);
 
+router.get("/vendidos-todos", async (req, res) => {
+  try {
+    const registros = await Vendidos.find()
+      .populate("productoId", "codigo descripcion")
+      .sort({ factura: 1 });
+    res.json({ ok: true, registros });
+  } catch (error) {
+    res.json({ ok: false, error: error.message });
+  }
+});
+
 export default router;
