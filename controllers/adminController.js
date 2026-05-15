@@ -87,7 +87,9 @@ export const eliminarVentaDuplicada = async (req, res) => {
 // ===============================
 export const detectarDuplicadosVendidos = async (req, res) => {
   try {
-    const registros = await Vendidos.find().lean();
+    const registros = await Vendidos.find()
+    .populate("productoId", "codigo descripcion") // ← aquí traemos código y nombre
+    .lean();
     const mapa = {};
     const duplicados = [];
     for (const r of registros) {
