@@ -6,8 +6,7 @@ import Moneda from "../models/dbMoneda.js";
 const router = express.Router();
 
 router.post("/", async (req, res) => {
-  try {
-    console.log("📥 RECIBIDO EN BACKEND:", req.body);
+  try {    
     const nuevo = new Moneda(req.body);
     await nuevo.save();
     return res.json({

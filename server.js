@@ -23,6 +23,7 @@ import vendidos from "./routes/rou_vendidos.js";
 import gastos from "./routes/rou_gastos.js";
 import caja from "./routes/rou_caja.js";
 import TipoGastos from "./routes/rou_tipogastos.js";
+import adminRoutes from "./routes/rou_integra.js";
 
 const app = express();
 
@@ -58,8 +59,7 @@ app.get("/api/ping", (req, res) => {
 (async () => {
   try {
     await conectarDB();
-    console.log("🔥 DB LISTA — EL SERVIDOR PUEDE SEGUIR");
-
+    
     // ⭐ 3. MONTAR RUTAS SOLO DESPUÉS DE LA DB
     app.use("/api/usuarios", usuarios);
     app.use("/api/categorias", categorias);
@@ -84,7 +84,8 @@ app.get("/api/ping", (req, res) => {
     app.use("/api/facturas", reservaRoutes);
     app.use("/api/gastos", gastos);
     app.use("/api/caja", caja);    
-    app.use("/api/tipogastos", TipoGastos);    
+    app.use("/api/tipogastos", TipoGastos);
+    app.use("/admin", adminRoutes);
 
     // ⭐ 4. MANEJO GLOBAL DE ERRORES
     app.use((err, req, res, next) => {
