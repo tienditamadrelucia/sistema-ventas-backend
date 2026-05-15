@@ -8,20 +8,35 @@ import Vendidos from "../models/dbVendidos.js";
 const detectarDuplicados = (registros) => {
   const mapa = {};
   const duplicados = [];
-
   for (const r of registros) {
-    const clave = `${r.factura}-${r.operacion}-${r.total}-${new Date(r.fecha).toISOString()}`;
-
+    let fechaISO = "FECHA_INVALIDA";
+    try {
+      const f = new Date(r.fecha);
+      // Validar fecha real
+      if (!isNaN(f.getTime())) {
+        // Convertir SIEMPRE a UTC
+        fechaISO = new Date(Date.UTC(
+          f.getUTCFullYear(),
+          f.getUTCMonth(),
+          f.getUTCDate(),
+          f.getUTCHours(),
+          f.getUTCMinutes(),
+          f.getUTCSeconds()
+        )).toISOString();
+      }
+    } catch {
+      fechaISO = "FECHA_INVALIDA";
+    }
+    const clave = `${r.factura}-${r.operacion}-${r.total}-${fechaISO}`;
     if (!mapa[clave]) mapa[clave] = [r];
     else mapa[clave].push(r);
   }
-
   for (const clave in mapa) {
     if (mapa[clave].length > 1) duplicados.push(mapa[clave]);
   }
-
   return duplicados;
 };
+
 
 // ===============================
 // PAGOS (MONEDA)
