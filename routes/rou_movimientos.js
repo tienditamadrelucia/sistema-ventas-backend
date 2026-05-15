@@ -5,9 +5,7 @@ import Salida from "../models/dbSalidas.js";
 
 const router = express.Router();
 
-router.get("/:productoId", obtenerMovimientos);
-
-async function obtenerMovimientos(req, res) {
+router.get("/:productoId", async (req, res) => {
   try {
     const { productoId } = req.params;
     const { fechaInicio, fechaFin } = req.query;
@@ -16,19 +14,33 @@ async function obtenerMovimientos(req, res) {
     const fin = new Date(fechaFin);
     fin.setHours(23, 59, 59, 999);
 
+    // ============================
+    // 1. ENTRADAS
+    // ============================
     const entradas = await Entrada.find({
       productoId,
       fecha: { $gte: inicio, $lte: fin }
     });
 
+    // ============================
+    // 2. SALIDAS
+    // ============================
     const salidas = await Salida.find({
       productoId,
       fecha: { $gte: inicio, $lte: fin }
     });
 
-    // VENTAS DESACTIVADO TEMPORALMENTE
-    const ventas = [];
+    // ============================
+    // 3. VENDIDOS (DETALLE POR PRODUCTO)
+    // ============================
+    const vendidos = await Vendidos.find({
+      productoId,
+      createdAt: { $gte: inicio, $lte: fin }
+    }).populate("productoId", "codigo descripcion");
 
+    // ============================
+    // 4. UNIFICAR MOVIMIENTOS
+    // ============================
     const movimientos = [
       ...entradas.map(e => ({
         tipo: "ENTRADA",
@@ -37,23 +49,39 @@ async function obtenerMovimientos(req, res) {
         observacion: e.observacion || "",
         origen: "Entradas"
       })),
+
       ...salidas.map(s => ({
         tipo: "SALIDA",
         fecha: s.fecha,
         cantidad: s.cantidad,
         observacion: s.observacion || "",
         origen: "Salidas"
+      })),
+
+      ...vendidos.map(v => ({
+        tipo: "VENTA",
+        fecha: v.createdAt,
+        cantidad: v.cantidad,
+        total: v.total,
+        factura: v.factura,
+        producto: v.productoId?.descripcion || "",
+        codigo: v.productoId?.codigo || "",
+        origen: "Vendidos"
       }))
-      // ...ventas (cuando exista)
     ];
 
+    // ============================
+    // 5. ORDENAR POR FECHA
+    // ============================
     movimientos.sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
 
     res.json({ ok: true, movimientos });
 
   } catch (error) {
     console.error(error);
-    res.status(500).json({ ok: false, mensaje: "Error obteniendo movimientos routes" });
+    res.status(500).json({ ok: false, mensaje: "Error obteniendo movimientos" });
   }
-}
+});
+
+
 export default router;
