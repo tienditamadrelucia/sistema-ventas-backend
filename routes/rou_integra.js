@@ -7,6 +7,7 @@ import {
   detectarDuplicadosVendidos,
   eliminarVendidoDuplicado
 } from "../controllers/adminController.js";
+import Vendidos from "../models/dbVendidos.js";
 
 const router = express.Router();
 
