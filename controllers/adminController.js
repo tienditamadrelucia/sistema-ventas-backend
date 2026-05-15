@@ -88,7 +88,28 @@ export const eliminarVentaDuplicada = async (req, res) => {
 export const detectarDuplicadosVendidos = async (req, res) => {
   try {
     const registros = await Vendidos.find().lean();
-    const duplicados = detectarDuplicados(registros);
+    const mapa = {};
+    const duplicados = [];
+    for (const r of registros) {
+      // Usamos createdAt como referencia de tiempo
+      let fechaISO = "SIN_FECHA";
+      try {
+        const f = new Date(r.createdAt);
+        if (!isNaN(f.getTime())) {
+          fechaISO = f.toISOString();
+        } else {
+          fechaISO = "FECHA_INVALIDA";
+        }
+      } catch {
+        fechaISO = "FECHA_INVALIDA";
+      }
+      const clave = `${r.factura}-${r.productoId}-${r.total}-${fechaISO}`;
+      if (!mapa[clave]) mapa[clave] = [r];
+      else mapa[clave].push(r);
+    }
+    for (const clave in mapa) {
+      if (mapa[clave].length > 1) duplicados.push(mapa[clave]);
+    }
     res.json({ ok: true, duplicados });
   } catch (error) {
     res.json({ ok: false, error: error.message });
