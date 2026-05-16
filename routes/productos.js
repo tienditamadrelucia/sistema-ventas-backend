@@ -80,23 +80,6 @@ router.post("/", async (req, res) => {
   }
 });
 
-// REPORTE DE INVENTARIO
-router.get("/reporte", async (req, res) => {
-  try {
-    const productos = await Producto.find()
-      .sort({ categoria: 1, codigo: 1 })
-      .select("codigo categoria descripcion stock costo venta");
-    res.json(productos);
-  } catch (error) {
-    console.error("Error generando reporte de inventario:", error);
-    res.status(500).json({
-      ok: false,
-      mensaje: "Error generando reporte de inventario",
-      detalle: error.message
-    });
-  }
-});
-
 // Actualizar producto
 router.put("/:id", async (req, res) => {
   try {
