@@ -32,9 +32,6 @@ router.get("/", async (req, res) => {
   }
 });
 
-
-
-
 router.post("/", async (req, res) => {
   try {
     const { fecha, categoria, productoId, codigo, cantidad, observacion } = req.body;
@@ -95,6 +92,31 @@ router.delete("/:id", async (req, res) => {
     return res.json({ ok: true });
   } catch (error) {
     return res.status(500).json({ ok: false, error: error.message });
+  }
+});
+
+router.get("/reporte", async (req, res) => {
+  try {
+    const { desde, hasta } = req.query;
+
+    const filtro = {};
+
+    if (desde && hasta) {
+      filtro.fecha = {
+        $gte: new Date(desde),
+        $lte: new Date(hasta)
+      };
+    }
+
+    const entradas = await Entrada.find(filtro)
+      .populate("productoId", "codigo descripcion categoria")
+      .sort({ fecha: 1 });
+
+    res.json(entradas);
+
+  } catch (error) {
+    console.error("Error en reporte de entradas:", error);
+    res.status(500).json({ error: "Error generando reporte" });
   }
 });
 
