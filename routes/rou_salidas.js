@@ -26,11 +26,41 @@ router.get("/", async (req, res) => {
       totalPages: Math.ceil(total / limit),
       salidas
     });
-
+ 
   } catch (error) {
     return res.status(400).json({
       ok: false,
       mensaje: "Error obteniendo salidas",
+      detalle: error.message
+    });
+  }
+});
+
+// GET REPORTE POR FECHAS
+router.get("/reporte", async (req, res) => {
+  try {
+    const { desde, hasta } = req.query;
+    if (!desde || !hasta) {
+      return res.status(400).json({
+        ok: false,
+        mensaje: "Debe enviar fecha desde y hasta"
+      });
+    }
+    const inicio = new Date(desde);
+    const fin = new Date(hasta);
+    fin.setHours(23, 59, 59, 999);
+    const salidas = await dbSalidas
+      .find({
+        fecha: { $gte: inicio, $lte: fin }
+      })
+      .populate("productoId", "codigo descripcion categoria")
+      .sort({ fecha: 1 });
+    res.json(salidas);
+  } catch (error) {
+    console.error("Error en reporte de salidas:", error);
+    res.status(500).json({
+      ok: false,
+      mensaje: "Error generando reporte de salidas",
       detalle: error.message
     });
   }
