@@ -353,8 +353,7 @@ router.get("/resumen", async (req, res) => {
     inicio.setHours(0, 0, 0, 0);
     const fin = new Date(hasta);
     fin.setHours(23, 59, 59, 999);
-    // Buscar SOLO ventas dentro del rango
-    const ventas = await dbMoneda.aggregate([
+    const ventas = await Moneda.aggregate([
       {
         $match: {
           fecha: { $gte: inicio, $lte: fin },
@@ -369,7 +368,7 @@ router.get("/resumen", async (req, res) => {
           totalDolares: { $sum: "$efectivoD" },
           totalBolivares: {
             $sum: {
-              $add: ["$efectivoBs", "$transferenciaBs", "$pagomovilBs", "$punto"]
+              $add: ["$efectivoBs", "$transferenciaBs", "$pagomovilBs", "$puntoBs"]
             }
           },
           totalPesos: {
@@ -381,7 +380,6 @@ router.get("/resumen", async (req, res) => {
       },
       { $sort: { "_id.dia": 1 } }
     ]);
-    // Formato final
     const resultado = ventas.map(v => ({
       fecha: v._id.dia,
       dolares: v.totalDolares,
@@ -394,6 +392,7 @@ router.get("/resumen", async (req, res) => {
     res.status(500).json({ ok: false, mensaje: "Error generando resumen de ventas" });
   }
 });
+
 
 router.put("/cambiar-estado/:id", async (req, res) => {
   try {
