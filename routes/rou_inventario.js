@@ -4,6 +4,7 @@ import Producto from "../models/Producto.js";
 import Entrada from "../models/Entrada.js";
 import Salida from "../models/dbSalidas.js";
 import Vendidos from "../models/dbVendidos.js";
+import Ventas from "../models/dbVentas.js";
 import mongoose from "mongoose";
 
 
@@ -138,10 +139,26 @@ router.get("/reporte", async (req, res) => {
         { $match: { productoId, fecha: { $gte: inicio, $lte: fin } } },
         { $group: { _id: null, total: { $sum: "$cantidad" } } }
       ]);
-      const vendidos = await Vendidos.aggregate([
-        { $match: { productoId, fecha: { $gte: inicio, $lte: fin } } },
-        { $group: { _id: null, total: { $sum: "$cantidad" } } }
-      ]);
+      // BUSCAR SOLO VENTAS QUE SI DEBEN DESCONTAR STOCK
+      const vendidosValidos = await Vendidos.aggregate([
+        { $match: { productoId, fecha: { $gte: inicio, $lte: fin } } }
+        ]);
+        let totalVendidos = 0;
+        for (const v of vendidosValidos) {
+          const venta = await Ventas.findOne({ factura: v.factura });
+          if (!venta) continue;
+            // 1. Venta contado → descontar
+          if (venta.estado === "CONTADO") {
+            totalVendidos += v.cantidad;
+            continue;
+            }
+            // 2. Venta crédito cancelada → descontar
+          if (venta.estado === "CREDITO" && venta.restaUSD <= 0) {
+            totalVendidos += v.cantidad;
+            continue;
+            }
+            // 3. Venta crédito NO cancelada → NO descontar
+        }
       const totalEntradas = entradas?.[0]?.total || 0;
       const totalSalidas = salidas?.[0]?.total || 0;
       const totalVendidos = vendidos?.[0]?.total || 0;
