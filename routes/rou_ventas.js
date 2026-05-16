@@ -404,7 +404,6 @@ router.get("/resumen", async (req, res) => {
   }
 });
 
-
 router.put("/cambiar-estado/:id", async (req, res) => {
   try {
     const { id } = req.params;
