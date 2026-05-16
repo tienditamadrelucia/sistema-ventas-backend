@@ -25,6 +25,8 @@ import caja from "./routes/rou_caja.js";
 import TipoGastos from "./routes/rou_tipogastos.js";
 import adminRoutes from "./routes/rou_integra.js";
 import repentradas from "./routes/entradas.js";
+import repsalidas from "./routes/rou_salidas.js";
+import repgastos from "./routes/rou_gastos.js";
 
 const app = express();
 

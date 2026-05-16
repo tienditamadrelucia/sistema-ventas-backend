@@ -79,5 +79,33 @@ router.get("/gastos/:dia", async (req, res) => {
   }
 });
 
+// REPORTE DE GASTOS POR FECHAS
+router.get("/reporte", async (req, res) => {
+  try {
+    const { desde, hasta } = req.query;
+    if (!desde || !hasta) {
+      return res.status(400).json({
+        ok: false,
+        mensaje: "Debe enviar fecha desde y hasta"
+      });
+    }
+    const inicio = new Date(desde);
+    const fin = new Date(hasta);
+    fin.setHours(23, 59, 59, 999);
+    const gastos = await dbGastos
+      .find({
+        fecha: { $gte: inicio, $lte: fin }
+      })
+      .sort({ fecha: 1 });
+    res.json(gastos);
+  } catch (error) {
+    console.error("Error generando reporte de gastos:", error);
+    res.status(500).json({
+      ok: false,
+      mensaje: "Error generando reporte de gastos",
+      detalle: error.message
+    });
+  }
+});
 
 export default router;
