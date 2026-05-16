@@ -24,6 +24,7 @@ import gastos from "./routes/rou_gastos.js";
 import caja from "./routes/rou_caja.js";
 import TipoGastos from "./routes/rou_tipogastos.js";
 import adminRoutes from "./routes/rou_integra.js";
+import repentradas from "./routes/entradas.js";
 
 const app = express();
 
@@ -86,6 +87,7 @@ app.get("/api/ping", (req, res) => {
     app.use("/api/caja", caja);    
     app.use("/api/tipogastos", TipoGastos);
     app.use("/admin", adminRoutes);
+    app.use("/repentradas", repentradas);
 
     // ⭐ 4. MANEJO GLOBAL DE ERRORES
     app.use((err, req, res, next) => {
