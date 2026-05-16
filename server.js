@@ -27,6 +27,7 @@ import adminRoutes from "./routes/rou_integra.js";
 import repentradas from "./routes/entradas.js";
 import repsalidas from "./routes/rou_salidas.js";
 import repgastos from "./routes/rou_gastos.js";
+import repinventa from "./routes/rou_inventario.js";
 
 const app = express();
 

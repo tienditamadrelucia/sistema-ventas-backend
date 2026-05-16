@@ -10,19 +10,16 @@ const router = express.Router();
 // ⭐ FUNCIÓN PARA ORDENAR TODA LA DB COMO TÚ QUIERES
 async function ordenarProductosDB() {
   const productos = await Producto.find();
-
   // ⭐ ORDENAR PRIMERO POR CATEGORÍA, LUEGO POR CÓDIGO
   productos.sort((a, b) => {
     // 1. Ordenar por categoría
     if (a.categoria < b.categoria) return -1;
     if (a.categoria > b.categoria) return 1;
-
     // 2. Si la categoría es igual, ordenar por código numérico
     const codA = Number(a.codigo);
     const codB = Number(b.codigo);
     return codA - codB;
   });
-
   // Guardar el orden en un campo "orden"
   for (let i = 0; i < productos.length; i++) {
     await Producto.findByIdAndUpdate(productos[i]._id, { orden: i });
@@ -55,7 +52,6 @@ router.get("/proximo-codigo", async (req, res) => {
   }
 });
 
-
 // Obtener productos por categoría (solo UNA ruta)
 router.get("/por-categoria/:codigo", async (req, res) => {
   try {
@@ -66,26 +62,38 @@ router.get("/por-categoria/:codigo", async (req, res) => {
   }
 });
 
-
 // Crear producto
 router.post("/", async (req, res) => {
   try {
     const ultimo = await Producto.findOne().sort({ codigo: -1 });
     const nuevoCodigo = ultimo ? Number(ultimo.codigo) + 1 : 1;
-
     const nuevo = new Producto({
       ...req.body,
       codigo: nuevoCodigo
     });
-
     await nuevo.save();
-
     // ⭐ ORDENAR TODA LA DB DESPUÉS DE CREAR UN PRODUCTO
     await ordenarProductosDB();
-
     res.json({ ok: true, producto: nuevo });
   } catch (error) {
     res.status(500).json({ ok: false, error: "Error creando producto" });
+  }
+});
+
+// REPORTE DE INVENTARIO
+router.get("/reporte", async (req, res) => {
+  try {
+    const productos = await Producto.find()
+      .sort({ categoria: 1, codigo: 1 })
+      .select("codigo categoria descripcion stock costo venta");
+    res.json(productos);
+  } catch (error) {
+    console.error("Error generando reporte de inventario:", error);
+    res.status(500).json({
+      ok: false,
+      mensaje: "Error generando reporte de inventario",
+      detalle: error.message
+    });
   }
 });
 
