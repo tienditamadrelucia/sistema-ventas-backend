@@ -343,6 +343,58 @@ router.get("/reporte-creditos/:desde/:hasta", async (req, res) => {
   }
 });
 
+router.get("/resumen", async (req, res) => {
+  try {
+    const { desde, hasta } = req.query;
+    if (!desde || !hasta) {
+      return res.status(400).json({ ok: false, mensaje: "Debe enviar ambas fechas" });
+    }
+    const inicio = new Date(desde);
+    inicio.setHours(0, 0, 0, 0);
+    const fin = new Date(hasta);
+    fin.setHours(23, 59, 59, 999);
+    // Buscar SOLO ventas dentro del rango
+    const ventas = await dbMoneda.aggregate([
+      {
+        $match: {
+          fecha: { $gte: inicio, $lte: fin },
+          operacion: "VENTA"
+        }
+      },
+      {
+        $group: {
+          _id: {
+            dia: { $dateToString: { format: "%Y-%m-%d", date: "$fecha" } }
+          },
+          totalDolares: { $sum: "$efectivoD" },
+          totalBolivares: {
+            $sum: {
+              $add: ["$efectivoBs", "$transferenciaBs", "$pagomovilBs", "$punto"]
+            }
+          },
+          totalPesos: {
+            $sum: {
+              $add: ["$efectivoP", "$transferenciaP"]
+            }
+          }
+        }
+      },
+      { $sort: { "_id.dia": 1 } }
+    ]);
+    // Formato final
+    const resultado = ventas.map(v => ({
+      fecha: v._id.dia,
+      dolares: v.totalDolares,
+      bolivares: v.totalBolivares,
+      pesos: v.totalPesos
+    }));
+    res.json(resultado);
+  } catch (error) {
+    console.error("Error generando resumen de ventas:", error);
+    res.status(500).json({ ok: false, mensaje: "Error generando resumen de ventas" });
+  }
+});
+
 router.put("/cambiar-estado/:id", async (req, res) => {
   try {
     const { id } = req.params;

@@ -28,6 +28,7 @@ import repentradas from "./routes/entradas.js";
 import repsalidas from "./routes/rou_salidas.js";
 import repgastos from "./routes/rou_gastos.js";
 import repinventa from "./routes/rou_inventario.js";
+import resumenventas from "./routes/rou_ventas.js";
 
 const app = express();
 
