@@ -380,13 +380,24 @@ router.get("/resumen", async (req, res) => {
       },
       { $sort: { "_id.dia": 1 } }
     ]);
-    const resultado = ventas.map(v => ({
+    // Convertir formato
+    const resumen = ventas.map(v => ({
       fecha: v._id.dia,
       dolares: v.totalDolares,
       bolivares: v.totalBolivares,
       pesos: v.totalPesos
     }));
-    res.json(resultado);
+    // ⭐ TOTALES GENERALES
+    const totales = {
+      dolares: resumen.reduce((acc, r) => acc + r.dolares, 0),
+      bolivares: resumen.reduce((acc, r) => acc + r.bolivares, 0),
+      pesos: resumen.reduce((acc, r) => acc + r.pesos, 0)
+    };
+    res.json({
+      ok: true,
+      resumen,
+      totales
+    });
   } catch (error) {
     console.error("Error generando resumen de ventas:", error);
     res.status(500).json({ ok: false, mensaje: "Error generando resumen de ventas" });
