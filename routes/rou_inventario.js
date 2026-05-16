@@ -131,40 +131,42 @@ router.get("/reporte", async (req, res) => {
     const resultado = [];
     for (const p of productos) {
       const productoId = p._id;
+      // ENTRADAS
       const entradas = await Entrada.aggregate([
         { $match: { productoId, fecha: { $gte: inicio, $lte: fin } } },
         { $group: { _id: null, total: { $sum: "$cantidad" } } }
       ]);
+      // SALIDAS
       const salidas = await Salida.aggregate([
         { $match: { productoId, fecha: { $gte: inicio, $lte: fin } } },
         { $group: { _id: null, total: { $sum: "$cantidad" } } }
       ]);
-      // BUSCAR SOLO VENTAS QUE SI DEBEN DESCONTAR STOCK
-      const vendidosValidos = await Vendidos.aggregate([
-        { $match: { productoId, fecha: { $gte: inicio, $lte: fin } } }
-        ]);
-        let totalVendidos = 0;
-        for (const v of vendidosValidos) {
-          const venta = await Ventas.findOne({ factura: v.factura });
-          if (!venta) continue;
-            // 1. Venta contado → descontar
-          if (venta.estado === "CONTADO") {
-            totalVendidos += v.cantidad;
-            continue;
-            }
-            // 2. Venta crédito cancelada → descontar
-          if (venta.estado === "CREDITO" && venta.restaUSD <= 0) {
-            totalVendidos += v.cantidad;
-            continue;
-            }
-            // 3. Venta crédito NO cancelada → NO descontar
+      // VENDIDOS (pero filtrando crédito)
+      const vendidosLista = await Vendidos.find({
+        productoId,
+        fecha: { $gte: inicio, $lte: fin }
+      });
+      let totalVendidosValidos = 0; // ⭐ ESTA ES LA VARIABLE CORRECTA
+      for (const v of vendidosLista) {
+        const venta = await Ventas.findOne({ factura: v.factura });
+        if (!venta) continue;
+        // 1. Venta contado → descontar
+        if (venta.estado === "CONTADO") {
+          totalVendidosValidos += v.cantidad;
+          continue;
         }
+        // 2. Venta crédito cancelada → descontar
+        if (venta.estado === "CREDITO" && venta.restaUSD <= 0) {
+          totalVendidosValidos += v.cantidad;
+          continue;
+        }
+        // 3. Venta crédito NO cancelada → NO descontar
+      }
       const totalEntradas = entradas?.[0]?.total || 0;
       const totalSalidas = salidas?.[0]?.total || 0;
-      const totalVendidos = vendidos?.[0]?.total || 0;
+      // ⭐ USAR SOLO LOS VENDIDOS VÁLIDOS
       const stockInicial = p.stock || 0;
-      const stockReal = stockInicial + totalEntradas - totalSalidas - totalVendidos;
-      // ⭐ SOLO AGREGAR SI STOCK > 0
+      const stockReal = stockInicial + totalEntradas - totalSalidas - totalVendidosValidos;
       if (stockReal > 0) {
         resultado.push({
           _id: p._id,
