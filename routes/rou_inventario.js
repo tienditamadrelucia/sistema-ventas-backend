@@ -147,15 +147,18 @@ router.get("/reporte", async (req, res) => {
       const totalVendidos = vendidos?.[0]?.total || 0;
       const stockInicial = p.stock || 0;
       const stockReal = stockInicial + totalEntradas - totalSalidas - totalVendidos;
-      resultado.push({
-        _id: p._id,
-        codigo: p.codigo,
-        categoria: p.categoria,
-        descripcion: p.descripcion,
-        costo: p.costo,
-        venta: p.venta,
-        stockReal
-      });
+      // ⭐ SOLO AGREGAR SI STOCK > 0
+      if (stockReal > 0) {
+        resultado.push({
+          _id: p._id,
+          codigo: p.codigo,
+          categoria: p.categoria,
+          descripcion: p.descripcion,
+          costo: p.costo,
+          venta: p.venta,
+          stockReal
+        });
+      }
     }
     res.json(resultado);
   } catch (error) {
