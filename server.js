@@ -87,8 +87,7 @@ app.get("/api/ping", (req, res) => {
     app.use("/api/caja", caja);    
     app.use("/api/tipogastos", TipoGastos);
     app.use("/admin", adminRoutes);
-    app.use("/entradas", repentradas);
-
+    
     // ⭐ 4. MANEJO GLOBAL DE ERRORES
     app.use((err, req, res, next) => {
       console.error("ERROR GLOBAL:", err);
