@@ -170,4 +170,23 @@ router.delete("/:id", async (req, res) => {
   }
 });
 
+const multer = require("multer");
+const path = require("path");
+// Carpeta donde se guardarán las fotos
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, "uploads/productos/");
+  },
+  filename: (req, file, cb) => {
+    const ext = path.extname(file.originalname);
+    cb(null, Date.now() + ext);
+  }
+});
+const upload = multer({ storage });
+
+router.post("/upload", upload.single("foto"), (req, res) => {
+  const url = `${req.protocol}://${req.get("host")}/uploads/productos/${req.file.filename}`;
+  res.json({ ok: true, url });
+});
+
 export default router;

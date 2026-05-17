@@ -69,6 +69,7 @@ app.get("/api/ping", (req, res) => {
     app.use("/api/usuarios", usuarios);
     app.use("/api/categorias", categorias);
     app.use("/api/productos", productos);
+    app.use("/uploads", express.static("uploads"));
     app.use("/api/entradas", entradas);
     app.use("/api/salidas", salidas);
     app.use("/api/inventario", inventario);    
