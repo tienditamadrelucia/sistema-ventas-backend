@@ -29,8 +29,12 @@ import repsalidas from "./routes/rou_salidas.js";
 import repgastos from "./routes/rou_gastos.js";
 import repinventa from "./routes/rou_inventario.js";
 import resumenventas from "./routes/rou_ventas.js";
+import path from "path";
+import { fileURLToPath } from "url";
 
 const app = express();
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // ⭐ CORS CORRECTO PARA RENDER + VERCEL
 app.use(cors({
@@ -69,7 +73,7 @@ app.get("/api/ping", (req, res) => {
     app.use("/api/usuarios", usuarios);
     app.use("/api/categorias", categorias);
     app.use("/api/productos", productos);
-    app.use("/uploads", express.static("uploads"));
+    app.use("/uploads", express.static(path.join(__dirname, "uploads")));
     app.use("/api/entradas", entradas);
     app.use("/api/salidas", salidas);
     app.use("/api/inventario", inventario);    

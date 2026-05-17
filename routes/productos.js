@@ -3,9 +3,14 @@ import Producto from "../models/Producto.js";
 import vendidos from "../models/dbVendidos.js";
 import Entrada from "../models/Entrada.js";
 import dbSalidas from "../models/dbSalidas.js";
+import multer from "multer";
+import path from "path";
+import { fileURLToPath } from "url";
 
 
 const router = express.Router();
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // ⭐ FUNCIÓN PARA ORDENAR TODA LA DB COMO TÚ QUIERES
 async function ordenarProductosDB() {
@@ -170,8 +175,6 @@ router.delete("/:id", async (req, res) => {
   }
 });
 
-const multer = require("multer");
-const path = require("path");
 // Carpeta donde se guardarán las fotos
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
