@@ -455,31 +455,50 @@ router.get("/reporte-categoria", async (req, res) => {
       pagosPorFactura[f].D += (mov.efectivoD || 0) + (mov.zelle || 0);
     }
     // 5. Construir reporte agrupado por categoría → producto
-    const reporte = {};
-    for (const v of vendidos) {
-      const producto = await Producto.findById(v.productoId);
-      if (!producto) continue;
-      const categoria = producto.categoria;
-      const descripcion = producto.descripcion;
-      const factura = v.factura;
-      if (!reporte[categoria]) reporte[categoria] = {};
-      if (!reporte[categoria][descripcion]) {
-        reporte[categoria][descripcion] = {
-          cantidadVendida: 0,
-          totalP: 0,
-          totalBs: 0,
-          totalD: 0
-        };
-      }
-      // Cantidad vendida
-      reporte[categoria][descripcion].cantidadVendida += v.cantidad;
-      // Sumar pagos reales por moneda
-      if (pagosPorFactura[factura]) {
-        reporte[categoria][descripcion].totalP += pagosPorFactura[factura].P;
-        reporte[categoria][descripcion].totalBs += pagosPorFactura[factura].Bs;
-        reporte[categoria][descripcion].totalD += pagosPorFactura[factura].D;
-      }
-    }
+const reporte = {};
+
+for (const v of vendidos) {
+  const producto = await Producto.findById(v.productoId);
+  if (!producto) continue;
+
+  const categoria = producto.categoria;
+  const descripcion = producto.descripcion;
+  const factura = v.factura;
+
+  // Datos del producto
+  const costo = producto.costo || 0;
+  const precioVenta = producto.venta || 0;
+
+  // Utilidad por este item
+  const utilidadItem = (precioVenta - costo) * v.cantidad;
+
+  if (!reporte[categoria]) reporte[categoria] = {};
+  if (!reporte[categoria][descripcion]) {
+    reporte[categoria][descripcion] = {
+      cantidadVendida: 0,
+      totalP: 0,
+      totalBs: 0,
+      totalD: 0,
+      costo,
+      precioVenta,
+      utilidad: 0
+    };
+  }
+
+  // Cantidad vendida
+  reporte[categoria][descripcion].cantidadVendida += v.cantidad;
+
+  // Acumular utilidad
+  reporte[categoria][descripcion].utilidad += utilidadItem;
+
+  // Sumar pagos reales por moneda
+  if (pagosPorFactura[factura]) {
+    reporte[categoria][descripcion].totalP += pagosPorFactura[factura].P;
+    reporte[categoria][descripcion].totalBs += pagosPorFactura[factura].Bs;
+    reporte[categoria][descripcion].totalD += pagosPorFactura[factura].D;
+  }
+}
+
     res.json({ ok: true, reporte });
   } catch (error) {
     console.error("ERROR REPORTE CATEGORÍA:", error);
