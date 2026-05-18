@@ -8,6 +8,7 @@ import Producto from "../models/Producto.js";
 import { crearVenta, obtenerVentas, buscarVentaPorNumero } from "../controllers/con_ventas.js";
 import Tasas from "../models/dbTasas.js";
 import Contador from "../models/Contador.js";
+import Categoria from "../models/Categoria.js"
 
 const router = express.Router();
 
@@ -401,6 +402,88 @@ router.get("/resumen", async (req, res) => {
   } catch (error) {
     console.error("Error generando resumen de ventas:", error);
     res.status(500).json({ ok: false, mensaje: "Error generando resumen de ventas" });
+  }
+});
+
+router.get("/reporte-categoria", async (req, res) => {
+  try {
+    const { desde, hasta } = req.query;
+    if (!desde || !hasta) {
+      return res.status(400).json({ ok: false, mensaje: "Debe enviar ambas fechas" });
+    }
+    const inicio = new Date(desde);
+    inicio.setHours(0, 0, 0, 0);
+    const fin = new Date(hasta);
+    fin.setHours(23, 59, 59, 999);
+    // 1. Buscar facturas CONTADO dentro del rango
+    const ventasContado = await Ventas.find({
+      estado: "CONTADO",
+      fecha: { $gte: inicio, $lte: fin }
+    });
+    const facturas = ventasContado.map(v => v.factura);
+    if (facturas.length === 0) {
+      return res.json({ ok: true, reporte: [] });
+    }
+    // 2. Buscar productos vendidos de esas facturas
+    const vendidos = await Vendidos.find({
+      factura: { $in: facturas }
+    });
+    // 3. Buscar movimientos de moneda (VENTA + VUELTOS)
+    const movimientos = await Moneda.find({
+      factura: { $in: facturas }
+    });
+    // 4. Agrupar pagos por factura
+    const pagosPorFactura = {};
+    for (const mov of movimientos) {
+      const f = mov.factura;
+      if (!pagosPorFactura[f]) {
+        pagosPorFactura[f] = {
+          P: 0,
+          Bs: 0,
+          D: 0
+        };
+      }
+      // PESOS
+      pagosPorFactura[f].P += (mov.efectivoP || 0) + (mov.transferenciaP || 0);
+      // BOLÍVARES
+      pagosPorFactura[f].Bs +=
+        (mov.efectivoBs || 0) +
+        (mov.transferenciaBs || 0) +
+        (mov.puntoBs || 0) +
+        (mov.pagomovilBs || 0);
+      // DÓLARES
+      pagosPorFactura[f].D += (mov.efectivoD || 0) + (mov.zelle || 0);
+    }
+    // 5. Construir reporte agrupado por categoría → producto
+    const reporte = {};
+    for (const v of vendidos) {
+      const producto = await Producto.findById(v.productoId);
+      if (!producto) continue;
+      const categoria = producto.categoria;
+      const descripcion = producto.descripcion;
+      const factura = v.factura;
+      if (!reporte[categoria]) reporte[categoria] = {};
+      if (!reporte[categoria][descripcion]) {
+        reporte[categoria][descripcion] = {
+          cantidadVendida: 0,
+          totalP: 0,
+          totalBs: 0,
+          totalD: 0
+        };
+      }
+      // Cantidad vendida
+      reporte[categoria][descripcion].cantidadVendida += v.cantidad;
+      // Sumar pagos reales por moneda
+      if (pagosPorFactura[factura]) {
+        reporte[categoria][descripcion].totalP += pagosPorFactura[factura].P;
+        reporte[categoria][descripcion].totalBs += pagosPorFactura[factura].Bs;
+        reporte[categoria][descripcion].totalD += pagosPorFactura[factura].D;
+      }
+    }
+    res.json({ ok: true, reporte });
+  } catch (error) {
+    console.error("ERROR REPORTE CATEGORÍA:", error);
+    res.status(500).json({ ok: false, mensaje: "Error generando reporte" });
   }
 });
 
