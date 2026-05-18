@@ -422,13 +422,13 @@ router.get("/reporte-categoria", async (req, res) => {
     });
     const facturas = ventasContado.map(v => v.factura);
     if (facturas.length === 0) {
-      return res.json({ ok: true, reporte: [] });
+      return res.json({ ok: true, reporte: {} });
     }
-    // 2. Buscar productos vendidos de esas facturas
+    // 2. Buscar productos vendidos
     const vendidos = await Vendidos.find({
       factura: { $in: facturas }
     });
-    // 3. Buscar movimientos de moneda (VENTA + VUELTOS)
+    // 3. Buscar movimientos de moneda
     const movimientos = await Moneda.find({
       factura: { $in: facturas }
     });
@@ -437,68 +437,74 @@ router.get("/reporte-categoria", async (req, res) => {
     for (const mov of movimientos) {
       const f = mov.factura;
       if (!pagosPorFactura[f]) {
-        pagosPorFactura[f] = {
-          P: 0,
-          Bs: 0,
-          D: 0
-        };
+        pagosPorFactura[f] = { P: 0, Bs: 0, D: 0 };
       }
-      // PESOS
       pagosPorFactura[f].P += (mov.efectivoP || 0) + (mov.transferenciaP || 0);
-      // BOLÍVARES
       pagosPorFactura[f].Bs +=
         (mov.efectivoBs || 0) +
         (mov.transferenciaBs || 0) +
         (mov.puntoBs || 0) +
         (mov.pagomovilBs || 0);
-      // DÓLARES
       pagosPorFactura[f].D += (mov.efectivoD || 0) + (mov.zelle || 0);
     }
-    // 5. Construir reporte agrupado por categoría → producto
-const reporte = {};
-
-for (const v of vendidos) {
-  const producto = await Producto.findById(v.productoId);
-  if (!producto) continue;
-
-  const categoria = producto.categoria;
-  const descripcion = producto.descripcion;
-  const factura = v.factura;
-
-  // Datos del producto
-  const costo = producto.costo || 0;
-  const precioVenta = producto.venta || 0;
-
-  // Utilidad por este item
-  const utilidadItem = (precioVenta - costo) * v.cantidad;
-
-  if (!reporte[categoria]) reporte[categoria] = {};
-  if (!reporte[categoria][descripcion]) {
-    reporte[categoria][descripcion] = {
-      cantidadVendida: 0,
-      totalP: 0,
-      totalBs: 0,
-      totalD: 0,
-      costo,
-      precioVenta,
-      utilidad: 0
-    };
-  }
-
-  // Cantidad vendida
-  reporte[categoria][descripcion].cantidadVendida += v.cantidad;
-
-  // Acumular utilidad
-  reporte[categoria][descripcion].utilidad += utilidadItem;
-
-  // Sumar pagos reales por moneda
-  if (pagosPorFactura[factura]) {
-    reporte[categoria][descripcion].totalP += pagosPorFactura[factura].P;
-    reporte[categoria][descripcion].totalBs += pagosPorFactura[factura].Bs;
-    reporte[categoria][descripcion].totalD += pagosPorFactura[factura].D;
-  }
-}
-
+    // ⭐ 5. Tomar categorías desde la BD en el orden natural
+    const categorias = await Categoria.find().sort({ descripcion: 1 });
+    const reporte = {};
+    // ⭐ 6. Procesar categoría por categoría
+    for (const cat of categorias) {
+      const nombreCategoria = cat.descripcion;
+      const codigoCategoria = cat.codigo;
+      // Inicializar categoría
+      reporte[nombreCategoria] = {};
+      // Filtrar productos vendidos de esta categoría
+      const vendidosDeCategoria = vendidos.filter(v => {
+        const prod = v.productoId;
+        return true; // lo resolvemos abajo con populate
+      });
+      // Para evitar múltiples consultas, hacemos populate una sola vez
+      const vendidosPopulados = await Vendidos.find({
+        factura: { $in: facturas }
+      }).populate("productoId");
+      for (const v of vendidosPopulados) {
+        const producto = v.productoId;
+        if (!producto) continue;
+        if (producto.categoria !== codigoCategoria) continue;
+        const descripcion = producto.descripcion;
+        if (!reporte[nombreCategoria][descripcion]) {
+          reporte[nombreCategoria][descripcion] = {
+            cantidadVendida: 0,
+            totalP: 0,
+            totalBs: 0,
+            totalD: 0,
+            costo: producto.costo || 0,
+            precioVenta: producto.venta || 0,
+            utilidad: 0
+          };
+        }
+        // Cantidad
+        reporte[nombreCategoria][descripcion].cantidadVendida += v.cantidad;
+        // Utilidad
+        const utilidadItem =
+          (producto.venta - producto.costo) * v.cantidad;
+        reporte[nombreCategoria][descripcion].utilidad += utilidadItem;
+        // Pagos por factura
+        const factura = v.factura;
+        if (pagosPorFactura[factura]) {
+          reporte[nombreCategoria][descripcion].totalP += pagosPorFactura[factura].P;
+          reporte[nombreCategoria][descripcion].totalBs += pagosPorFactura[factura].Bs;
+          reporte[nombreCategoria][descripcion].totalD += pagosPorFactura[factura].D;
+        }
+      }
+      // ⭐ Ordenar productos alfabéticamente
+      const productosOrdenados = Object.keys(reporte[nombreCategoria]).sort((a, b) =>
+        a.localeCompare(b, "es")
+      );
+      const ordenados = {};
+      for (const p of productosOrdenados) {
+        ordenados[p] = reporte[nombreCategoria][p];
+      }
+      reporte[nombreCategoria] = ordenados;
+    }
     res.json({ ok: true, reporte });
   } catch (error) {
     console.error("ERROR REPORTE CATEGORÍA:", error);
