@@ -188,8 +188,9 @@ const storage = multer.diskStorage({
 const upload = multer({ storage });
 
 router.post("/upload", upload.single("foto"), (req, res) => {
-  const url = `${req.protocol}://${req.get("host")}/uploads/productos/${req.file.filename}`;
+  const url = `https://sistema-ventas-backend-qxbi.onrender.com/uploads/productos/${req.file.filename}`;
   res.json({ ok: true, url });
 });
+
 
 export default router;
