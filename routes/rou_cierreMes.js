@@ -80,20 +80,57 @@ router.post("/cierre-mes", async (req, res) => {
   }
 });
 
+// ⚠️ RUTA TEMPORAL — EJECUTAR UNA SOLA VEZ
 router.get("/fix-cierre", async (req, res) => {
   try {
-    await dbVentas.updateMany({ cierre: { $exists: false } }, { $set: { cierre: "N" } });
-    await dbEntrada.updateMany({ cierre: { $exists: false } }, { $set: { cierre: "N" } });
-    await dbSalidas.updateMany({ cierre: { $exists: false } }, { $set: { cierre: "N" } });
-    await dbGastos.updateMany({ cierre: { $exists: false } }, { $set: { cierre: "N" } });
-    await dbCaja.updateMany({ cierre: { $exists: false } }, { $set: { cierre: "N" } });
-    await dbInventario.updateMany({ cierre: { $exists: false } }, { $set: { cierre: "N" } });
+    const r1 = await dbVentas.updateMany(
+      { cierre: { $exists: false } },
+      { $set: { cierre: "N" } }
+    );
 
-    res.json({ ok: true, mensaje: "Campo cierre agregado a todos los documentos existentes" });
+    const r2 = await dbEntrada.updateMany(
+      { cierre: { $exists: false } },
+      { $set: { cierre: "N" } }
+    );
+
+    const r3 = await dbSalidas.updateMany(
+      { cierre: { $exists: false } },
+      { $set: { cierre: "N" } }
+    );
+
+    const r4 = await dbGastos.updateMany(
+      { cierre: { $exists: false } },
+      { $set: { cierre: "N" } }
+    );
+
+    const r5 = await dbCaja.updateMany(
+      { cierre: { $exists: false } },
+      { $set: { cierre: "N" } }
+    );
+
+    const r6 = await dbInventario.updateMany(
+      { cierre: { $exists: false } },
+      { $set: { cierre: "N" } }
+    );
+
+    res.json({
+      ok: true,
+      mensaje: "Campo 'cierre' agregado a todos los documentos existentes",
+      detalle: {
+        ventas: r1.modifiedCount,
+        entradas: r2.modifiedCount,
+        salidas: r3.modifiedCount,
+        gastos: r4.modifiedCount,
+        caja: r5.modifiedCount,
+        inventario: r6.modifiedCount
+      }
+    });
+
   } catch (error) {
-    res.json({ ok: false, error: error.message });
+    res.status(500).json({ ok: false, error: error.message });
   }
 });
+
 
 export default router;
 
