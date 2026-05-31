@@ -29,12 +29,14 @@ import repsalidas from "./routes/rou_salidas.js";
 import repgastos from "./routes/rou_gastos.js";
 import repinventa from "./routes/rou_inventario.js";
 import resumenventas from "./routes/rou_ventas.js";
+import cierreMes from "./routes/rou_cierreMes.js";
 import path from "path";
 import { fileURLToPath } from "url";
 
 const app = express();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+const cierreMesRouter = require("./cierreMes");
 
 // ⭐ CORS CORRECTO PARA RENDER + VERCEL
 app.use(cors({
@@ -96,6 +98,7 @@ app.get("/api/ping", (req, res) => {
     app.use("/api/caja", caja);    
     app.use("/api/tipogastos", TipoGastos);
     app.use("/admin", adminRoutes);
+    app.use("/api", cierreMes);
     
     // ⭐ 4. MANEJO GLOBAL DE ERRORES
     app.use((err, req, res, next) => {
