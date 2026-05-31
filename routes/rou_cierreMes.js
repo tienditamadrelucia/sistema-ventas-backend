@@ -1,16 +1,14 @@
 // rou_cierreMes.js
 // Cierre de mes para: dbCaja, dbGastos, dbInventario, dbSalidas, dbVentas, dbEntrada
+import express from "express";
+import dbCaja from "../models/dbCaja.js";
+import dbGastos from "../models/dbGastos.js";
+import dbInventario from "../models/dbInventario.js";
+import dbSalidas from "../models/dbSalidas.js";
+import dbVentas from "../models/dbVentas.js";
+import Entrada from "../models/Entrada.js";
 
-const express = require("express");
 const router = express.Router();
-
-// IMPORTA TUS MODELOS (ajusta las rutas según tu proyecto)
-const dbCaja = require("./models/dbCaja");
-const dbGastos = require("./models/dbGastos");
-const dbInventario = require("./models/dbInventario");
-const dbSalidas = require("./models/dbSalidas");
-const dbVentas = require("./models/dbVentas");
-const dbEntrada = require("./models/Entrada");
 
 // ⚠️ IMPORTANTE: en cada schema debe existir:
 // cierre: { type: String, default: "N" }
@@ -26,45 +24,61 @@ const dbEntrada = require("./models/Entrada");
 router.post("/cierre-mes", async (req, res) => {
   const { mes, año } = req.body;
 
+  if (!mes || !año) {
+    return res.status(400).json({ ok: false, error: "Mes y año son obligatorios" });
+  }
+
   const inicio = new Date(año, mes - 1, 1);
   const fin = new Date(año, mes - 1, 31);
 
   try {
-    await dbVentas.updateMany(
+    const rVentas = await dbVentas.updateMany(
       { fecha: { $gte: inicio, $lte: fin }, estado: "CONTADO", cierre: "N" },
       { $set: { cierre: "S" } }
     );
 
-    await dbEntrada.updateMany(
+    const rEntradas = await dbEntrada.updateMany(
       { fecha: { $gte: inicio, $lte: fin }, cierre: "N" },
       { $set: { cierre: "S" } }
     );
 
-    await dbSalidas.updateMany(
+    const rSalidas = await dbSalidas.updateMany(
       { fecha: { $gte: inicio, $lte: fin }, cierre: "N" },
       { $set: { cierre: "S" } }
     );
 
-    await dbGastos.updateMany(
+    const rGastos = await dbGastos.updateMany(
       { fecha: { $gte: inicio, $lte: fin }, cierre: "N" },
       { $set: { cierre: "S" } }
     );
 
-    await dbCaja.updateMany(
+    const rCaja = await dbCaja.updateMany(
       { fecha: { $gte: inicio, $lte: fin }, cierre: "N" },
       { $set: { cierre: "S" } }
     );
 
-    await dbInventario.updateMany(
+    const rInventario = await dbInventario.updateMany(
       { fecha: { $gte: inicio, $lte: fin }, cierre: "N" },
       { $set: { cierre: "S" } }
     );
 
-    res.json({ ok: true, mensaje: "Cierre de mes completado" });
+    res.json({
+      ok: true,
+      mensaje: "Cierre de mes completado correctamente",
+      detalle: {
+        ventas: rVentas.modifiedCount,
+        entradas: rEntradas.modifiedCount,
+        salidas: rSalidas.modifiedCount,
+        gastos: rGastos.modifiedCount,
+        caja: rCaja.modifiedCount,
+        inventario: rInventario.modifiedCount
+      }
+    });
 
   } catch (error) {
-    res.json({ ok: false, error: error.message });
+    res.status(500).json({ ok: false, error: error.message });
   }
 });
 
-module.exports = router;
+export default router;
+
