@@ -88,7 +88,7 @@ router.get("/fix-cierre", async (req, res) => {
       { $set: { cierre: "N" } }
     );
 
-    const r2 = await dbEntrada.updateMany(
+    const r2 = await Entrada.updateMany(
       { cierre: { $exists: false } },
       { $set: { cierre: "N" } }
     );
