@@ -6,7 +6,8 @@ const InventarioSchema = new mongoose.Schema({
   productoId: { type: String, required: true },   // Código o ID del producto
   stockReal: { type: Number, required: true }, // Stock final del sistema en esa fecha
   stockFisico: { type: mongoose.Schema.Types.Mixed, default: "" },  // Toma física realizada
-  observacion: { type: String, default: "" }      // Nota opcional
+  observacion: { type: String, default: "" },      // Nota opcional
+  cierre: { type: String, default: "N" }
 }, { timestamps: true });
 
 export default mongoose.model("Inventario", InventarioSchema);

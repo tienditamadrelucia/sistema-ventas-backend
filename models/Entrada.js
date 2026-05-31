@@ -12,7 +12,8 @@ const entradaSchema = new mongoose.Schema(
       // Cantidad que sale
       cantidad: { type: Number, required: true },
       // Motivo de la salida: VENTA, AJUSTE, etc.
-      observacion: { type: String, required: true }
+      observacion: { type: String, required: true },
+      cierre: { type: String, default: "N" }
     },
     { timestamps: true }
   );

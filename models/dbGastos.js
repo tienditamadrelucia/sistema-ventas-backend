@@ -8,7 +8,8 @@ const dbGastosSchema = new mongoose.Schema({
   numeroRecibo: { type: String, default: "" }, 
   cajaChica: { type: Boolean, default: false },
   usuario: { type: String },
-  creado: { type: Date, default: Date.now }
+  creado: { type: Date, default: Date.now },
+  cierre: { type: String, default: "N" }
 });
  
 export default mongoose.model("Gastos", dbGastosSchema);

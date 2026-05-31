@@ -9,7 +9,8 @@ const VentaSchema = new mongoose.Schema({
   IVA: { type: Number, default: 0 },
   total: { type: Number, required: true },
   usuario: { type: String, required: true },
-  estado: { type: String, enum: ["CONTADO", "CREDITO"], required: true }
+  estado: { type: String, enum: ["CONTADO", "CREDITO"], required: true },
+  cierre: { type: String, default: "N" }
 }, { timestamps: true });
 
 export default mongoose.model("ventas", VentaSchema);

@@ -40,5 +40,7 @@ const dbCajaSchema = new mongoose.Schema({
     D: { type: Number, default: 0 },
     P: { type: Number, default: 0 }
   },
+  cierre: { type: String, default: "N" }
+
 });
 export default mongoose.model("Caja", dbCajaSchema);
