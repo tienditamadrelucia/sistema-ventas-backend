@@ -37,7 +37,7 @@ router.post("/cierre-mes", async (req, res) => {
       { $set: { cierre: "S" } }
     );
 
-    const rEntradas = await dbEntrada.updateMany(
+    const rEntradas = await Entrada.updateMany(
       { fecha: { $gte: inicio, $lte: fin }, cierre: "N" },
       { $set: { cierre: "S" } }
     );
