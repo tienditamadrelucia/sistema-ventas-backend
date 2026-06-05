@@ -6,6 +6,19 @@ const router = express.Router();
 // CREAR GASTO
 router.post("/", async (req, res) => {
   try {
+    const { numeroRecibo } = req.body;
+    // Validar duplicado SOLO en gastos abiertos
+    const existe = await dbGastos.findOne({
+      numeroRecibo,
+      cierre: "N"
+    });
+    if (existe) {
+      return res.status(400).json({
+        ok: false,
+        mensaje: "Ya existe un gasto con ese número de recibo"
+      });
+    }
+    // Crear gasto
     const nuevo = new dbGastos(req.body);
     await nuevo.save();
     res.json({ ok: true, gasto: nuevo });
