@@ -1,5 +1,6 @@
 import express from "express";
 import Cliente from "../models/Cliente.js"; // Asegúrate que esta ruta sea la correcta
+import ventas from "../models/dbVentas.js";
 
 const router = express.Router();
 
@@ -117,8 +118,8 @@ router.delete("/:id", async (req, res) => {
     }
 
     // 🔴 VALIDAR SI TIENE VENTAS ASOCIADAS
-    const ventas = await Venta.find({ clienteId: id });
-    if (ventas.length > 0) {
+    const venta = await ventas.find({ clienteId: id });
+    if (venta.length > 0) {
       return res.status(400).json({
         ok: false,
         error: "No se puede eliminar el cliente porque tiene ventas asociadas"
@@ -133,6 +134,6 @@ router.delete("/:id", async (req, res) => {
     res.status(500).json({ ok: false, error: "Error eliminando cliente" });
   }
 });
-
+ 
 
 export default router;
