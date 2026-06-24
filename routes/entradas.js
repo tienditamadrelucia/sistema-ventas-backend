@@ -1,12 +1,12 @@
 import express from "express";
 import Entrada from "../models/Entrada.js";
+import Producto from "../models/Producto.js";
 
 const router = express.Router();
 
-// GET paginado (con filtro por fecha opcional)
-// 🟢 LISTAR ENTRADAS CON PAGINACIÓN Y FECHA OPCIONAL
-// 🟢 LISTAR ENTRADAS SIN FILTRO, SOLO PAGINACIÓN
-// 🟢 LISTAR ENTRADAS CON PAGINACIÓN (SIN FILTRO)
+// -------------------------------------------------------------
+// GET paginado (incluye costo y venta del producto)
+// -------------------------------------------------------------
 router.get("/", async (req, res) => {
   try {
     const page = parseInt(req.query.page) || 1;
@@ -18,7 +18,7 @@ router.get("/", async (req, res) => {
       .sort({ fecha: -1, createdAt: -1 })
       .skip(skip)
       .limit(limit)
-      .populate("productoId", "codigo descripcion categoria");
+      .populate("productoId", "codigo descripcion categoria costo venta");
 
     res.json({
       total,
@@ -32,30 +32,138 @@ router.get("/", async (req, res) => {
   }
 });
 
+// -------------------------------------------------------------
+// POST - Crear entrada
+// -------------------------------------------------------------
 router.post("/", async (req, res) => {
   try {
-    const { fecha, categoria, productoId, codigo, cantidad, observacion } = req.body;
+    const { fecha, categoria, productoId, codigo, cantidad, observacion, precioCompra, precioVenta } = req.body;
+
+    const producto = await Producto.findById(productoId);
+    if (!producto) {
+      return res.status(404).json({ ok: false, error: "Producto no encontrado." });
+    }
+
+    let precioCompraFinal = precioCompra;
+    let precioVentaFinal = precioVenta;
+
+    // ⭐ COMPRAS
+    if (observacion === "COMPRAS") {
+      if (!precioCompra || precioCompra <= 0) {
+        return res.status(400).json({ ok: false, error: "Debe ingresar el precio de compra." });
+      }
+      if (!precioVenta || precioVenta <= 0) {
+        return res.status(400).json({ ok: false, error: "Debe ingresar el precio de venta." });
+      }
+      if (precioVenta < precioCompra * 1.30) {
+        return res.status(400).json({ ok: false, error: "El precio de venta debe ser al menos 30% mayor que el precio de compra." });
+      }
+    }
+
+    // ⭐ PRODUCCIÓN DEL MONASTERIO
+    else if (observacion === "PRODUCCIÓN DEL MONASTERIO") {
+      if (!precioVenta || precioVenta <= 0) {
+        return res.status(400).json({ ok: false, error: "Debe ingresar el precio de venta." });
+      }
+
+      precioCompraFinal = precioVenta * 0.50;
+
+      if (precioVenta < precioCompraFinal * 1.30) {
+        return res.status(400).json({ ok: false, error: "El precio de venta no cumple el margen mínimo del 30%." });
+      }
+    }
+
+    // ⭐ Otros motivos → no se usan precios
+    else {
+      precioCompraFinal = null;
+      precioVentaFinal = null;
+    }
+
+    // ⭐ ACTUALIZAR PRODUCTO SI APLICA
+    if (observacion === "COMPRAS" || observacion === "PRODUCCIÓN DEL MONASTERIO") {
+      producto.costo = precioCompraFinal;
+      producto.venta = precioVentaFinal;
+      await producto.save();
+    }
+
+    // ⭐ Crear entrada
     const entrada = await Entrada.create({
       fecha: new Date(fecha),
       categoria,
       productoId,
       codigo,
       cantidad,
-      observacion
+      observacion,
+      precioCompra: precioCompraFinal,
+      precioVenta: precioVentaFinal
     });
+
     res.json({ ok: true, entrada });
+
   } catch (error) {
     return res.status(400).json({
-    ok: false,
-    mensaje: "Descripción clara del error",
-    detalle: error.message
-    });    
+      ok: false,
+      mensaje: "Error creando entrada",
+      detalle: error.message
+    });
   }
 });
 
+// -------------------------------------------------------------
+// PUT - Actualizar entrada
+// -------------------------------------------------------------
 router.put("/:id", async (req, res) => {
   try {
-    const { fecha, categoria, productoId, codigo, cantidad, observacion } = req.body;
+    const { fecha, categoria, productoId, codigo, cantidad, observacion, precioCompra, precioVenta } = req.body;
+
+    const producto = await Producto.findById(productoId);
+    if (!producto) {
+      return res.status(404).json({ ok: false, error: "Producto no encontrado." });
+    }
+
+    let precioCompraFinal = precioCompra;
+    let precioVentaFinal = precioVenta;
+
+    // ⭐ COMPRAS
+    if (observacion === "COMPRAS") {
+      if (!precioCompra || precioCompra <= 0) {
+        return res.status(400).json({ ok: false, error: "Debe ingresar el precio de compra." });
+      }
+      if (!precioVenta || precioVenta <= 0) {
+        return res.status(400).json({ ok: false, error: "Debe ingresar el precio de venta." });
+      }
+      if (precioVenta < precioCompra * 1.30) {
+        return res.status(400).json({ ok: false, error: "El precio de venta debe ser al menos 30% mayor que el precio de compra." });
+      }
+    }
+
+    // ⭐ PRODUCCIÓN DEL MONASTERIO
+    else if (observacion === "PRODUCCIÓN DEL MONASTERIO") {
+      if (!precioVenta || precioVenta <= 0) {
+        return res.status(400).json({ ok: false, error: "Debe ingresar el precio de venta." });
+      }
+
+      precioCompraFinal = precioVenta * 0.50;
+
+      if (precioVenta < precioCompraFinal * 1.30) {
+        return res.status(400).json({ ok: false, error: "El precio de venta no cumple el margen mínimo del 30%." });
+      }
+    }
+
+    // ⭐ Otros motivos
+    else {
+      precioCompraFinal = null;
+      precioVentaFinal = null;
+    }
+
+    // ⭐ ACTUALIZAR PRODUCTO SI APLICA
+    if (observacion === "COMPRAS" || observacion === "PRODUCCIÓN DEL MONASTERIO") {
+      producto.costo = precioCompraFinal;
+      producto.venta = precioVentaFinal;
+      await producto.save();
+    }
+
+    // ⭐ Actualizar entrada
     const entrada = await Entrada.findByIdAndUpdate(
       req.params.id,
       {
@@ -64,23 +172,31 @@ router.put("/:id", async (req, res) => {
         productoId,
         codigo,
         cantidad,
-        observacion
+        observacion,
+        precioCompra: precioCompraFinal,
+        precioVenta: precioVentaFinal
       },
       { new: true }
     );
+
     if (!entrada) {
       return res.status(404).json({ ok: false, error: "Entrada no encontrada" });
-    }    
+    }
+
     res.json({ ok: true, entrada });
+
   } catch (error) {
     return res.status(400).json({
       ok: false,
-      mensaje: "Descripción clara del error",
+      mensaje: "Error actualizando entrada",
       detalle: error.message
-});    
+    });
   }
 });
 
+// -------------------------------------------------------------
+// DELETE - Eliminar entrada
+// -------------------------------------------------------------
 router.delete("/:id", async (req, res) => {
   try {
     const eliminado = await Entrada.findByIdAndDelete(req.params.id);
@@ -95,6 +211,9 @@ router.delete("/:id", async (req, res) => {
   }
 });
 
+// -------------------------------------------------------------
+// REPORTE
+// -------------------------------------------------------------
 router.get("/reporte", async (req, res) => {
   try {
     const { desde, hasta } = req.query;
@@ -109,7 +228,7 @@ router.get("/reporte", async (req, res) => {
     }
 
     const entradas = await Entrada.find(filtro)
-      .populate("productoId", "codigo descripcion categoria")
+      .populate("productoId", "codigo descripcion categoria costo venta")
       .sort({ fecha: 1 });
 
     res.json(entradas);
