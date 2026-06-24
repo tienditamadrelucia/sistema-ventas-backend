@@ -11,7 +11,9 @@ const entradaSchema = new mongoose.Schema(
       codigo: { type: Number },
       // Cantidad que sale
       cantidad: { type: Number, required: true },
-      // Motivo de la salida: VENTA, AJUSTE, etc.
+      // Motivo de la entrada: COMPRA, AJUSTE, etc.
+      precioCompra: { type: Number },
+      precioVenta: { type: Number },
       observacion: { type: String, required: true },
       cierre: { type: String, default: "N" }
     },
