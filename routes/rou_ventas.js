@@ -81,10 +81,9 @@ router.post("/guardar", async (req, res) => {
 router.get("/vendidos/:numeroFactura", buscarVentaPorNumero);
 
 // Resumen de ventas por fecha (Moneda)
-router.get("/ventas/:fecha", async (req, res) => {
+router.get("/moneda/fecha/:fecha", async (req, res) => {
   try {
     const { fecha } = req.params;
-    
     if (!fecha || fecha.length !== 10) {
       return res.json({
         ok: false,
@@ -94,18 +93,7 @@ router.get("/ventas/:fecha", async (req, res) => {
         VentasBs: 0
       });
     }
-    //const ventas = await Moneda.find({ fecha });
-    // ⭐ Convertimos el string a Date UTC
-      console.log("👉 /ventas/:fecha llamado con:", fecha);
-    const inicio = normalizarUTC(fecha); // "2026-07-22" → Date UTC
-    console.log("👉 inicio UTC:", inicio);
-    const fin = new Date(inicio.getTime() + 86400000);
-    console.log("👉 fin UTC:", fin);
-    // ⭐ Buscamos por rango, igual que en tasas
-    const ventas = await Moneda.find({
-      fecha: { $gte: inicio, $lt: fin }
-    });
-    console.log("👉 ventas encontradas:", ventas.length);
+    const ventas = await Moneda.find({ fecha });
     const VentasP = ventas.reduce((acc, v) => acc + (v.efectivoP || 0), 0);
     const VentasD = ventas.reduce((acc, v) => acc + (v.efectivoD || 0), 0);
     const VentasBs = ventas.reduce((acc, v) => acc + (v.efectivoBs || 0), 0);
