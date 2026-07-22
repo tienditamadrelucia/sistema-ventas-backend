@@ -49,14 +49,9 @@ router.post("/guardar", async (req, res) => {
 
 // 📌 Modificar tasas del día
 router.put("/modificar/:id", async (req, res) => {
-  console.log("Buscando tasa entre:", inicio, "y", fin);
 
-  try {
-    //const hoy = new Date();
-    //const inicio = normalizarUTC(hoy);
-    //const fin = new Date(inicio.getTime() + 86400000);
-    const tasa = await Tasas.findById(req.params.id);
-    console.log("Resultado de findOne:", tasa);
+  try {    
+    const tasa = await Tasas.findById(req.params.id);    
   
     if (!tasa) {
       return res.json({ ok: false, mensaje: "No existen tasas para hoy" });
