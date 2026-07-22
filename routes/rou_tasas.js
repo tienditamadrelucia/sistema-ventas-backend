@@ -48,14 +48,12 @@ router.post("/guardar", async (req, res) => {
 });
 
 // 📌 Modificar tasas del día
-router.put("/modificar", async (req, res) => {
+router.put("/modificar/:id", async (req, res) => {
   try {
-    const hoy = new Date();
-    const inicio = normalizarUTC(hoy);
-    const fin = new Date(inicio.getTime() + 86400000);
-    const tasa = await Tasas.findOne({
-      fecha: { $gte: inicio, $lt: fin }
-    });
+    //const hoy = new Date();
+    //const inicio = normalizarUTC(hoy);
+    //const fin = new Date(inicio.getTime() + 86400000);
+    const tasa = await Tasas.findById(req.params.id);    
     if (!tasa) {
       return res.json({ ok: false, mensaje: "No existen tasas para hoy" });
     }
