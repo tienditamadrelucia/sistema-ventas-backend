@@ -93,7 +93,17 @@ router.get("/ventas/:fecha", async (req, res) => {
         VentasBs: 0
       });
     }
-    const ventas = await Moneda.find({ fecha });
+    //const ventas = await Moneda.find({ fecha });
+    const inicio = new Date(fecha);        // "2026-07-22" → Date real
+inicio.setHours(0, 0, 0, 0);
+
+const fin = new Date(inicio);
+fin.setDate(fin.getDate() + 1);
+
+const ventas = await Moneda.find({
+  fecha: { $gte: inicio, $lt: fin }
+});
+
     const VentasP = ventas.reduce((acc, v) => acc + (v.efectivoP || 0), 0);
     const VentasD = ventas.reduce((acc, v) => acc + (v.efectivoD || 0), 0);
     const VentasBs = ventas.reduce((acc, v) => acc + (v.efectivoBs || 0), 0);
