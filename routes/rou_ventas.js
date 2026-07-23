@@ -97,6 +97,7 @@ router.get("/moneda/fecha/:fecha", async (req, res) => {
     const VentasP = ventas.reduce((acc, v) => acc + (v.efectivoP || 0), 0);
     const VentasD = ventas.reduce((acc, v) => acc + (v.efectivoD || 0), 0);
     const VentasBs = ventas.reduce((acc, v) => acc + (v.efectivoBs || 0), 0);
+    console.log(VentasP, VentasD, VentasBs);
     return res.json({
       ok: true,
       VentasP,
