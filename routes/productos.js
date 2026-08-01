@@ -204,7 +204,7 @@ router.put("/ajustar-precios", soloAdmin, async (req, res) => {
 
     for (let p of productos) {
       // Guardar precio anterior
-      p.precioAnterior = p.venta;
+      p.precioanterior = p.venta;
 
       // Calcular nuevo precio
       const nuevoPrecio = (p.venta * tasaAnterior) / tasaActual;
