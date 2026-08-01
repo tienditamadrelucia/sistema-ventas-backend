@@ -35,17 +35,19 @@ async function ordenarProductosDB() {
 router.get("/", async (req, res) => {
   try {
     let productos = await Producto.find().sort({ categoria: 1, codigo: 1 });
-    // Convertir documentos Mongoose a objetos planos
-    productos = productos.map(p => p.toObject());
     productos = productos.map(p => {
+      p = p.toObject();
       if (!p.foto) return p;
+      // LIMPIAR ESPACIOS
       p.foto = p.foto.trim();
-      if (p.foto.startsWith("http")) return p;
-      if (p.foto.startsWith("/")) {
-        p.foto = `https://sistema-ventas-backend-qxbi.onrender.com${p.foto}`;
-        return p;
+      // FORZAR HTTPS SI LA URL EMPIEZA CON HTTP
+      if (p.foto.startsWith("http://")) {
+        p.foto = p.foto.replace("http://", "https://");
       }
-      p.foto = `https://sistema-ventas-backend-qxbi.onrender.com/${p.foto}`;
+      // SI NO ES URL COMPLETA, CONSTRUIRLA
+      if (!p.foto.startsWith("https://")) {
+        p.foto = `https://sistema-ventas-backend-qxbi.onrender.com/${p.foto.replace(/^\//, "")}`;
+      }
       return p;
     });
     res.json(productos);
@@ -53,7 +55,6 @@ router.get("/", async (req, res) => {
     res.status(500).json({ ok: false, error: "Error obteniendo productos" });
   }
 });
-
 
 // Obtener el próximo código disponible
 router.get("/proximo-codigo", async (req, res) => {  
