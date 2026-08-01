@@ -9,6 +9,7 @@ const ProductoSchema = new mongoose.Schema({
   fechaIngreso: Date,
   costo: Number,
   venta: Number,
+  precioanterior: Number,
   foto: String
 });
 

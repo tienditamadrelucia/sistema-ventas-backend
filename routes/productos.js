@@ -192,5 +192,42 @@ router.post("/upload", upload.single("foto"), (req, res) => {
   res.json({ ok: true, url });
 });
 
+router.put("/ajustar-precios", soloAdmin, async (req, res) => {
+  try {
+    const { tasaAnterior, tasaActual } = req.body;
+
+    if (!tasaAnterior || !tasaActual) {
+      return res.json({ ok: false, msg: "Debe ingresar ambas tasas." });
+    }
+
+    const productos = await Producto.find();
+
+    for (let p of productos) {
+      // Guardar precio anterior
+      p.precioAnterior = p.venta;
+
+      // Calcular nuevo precio
+      const nuevoPrecio = (p.venta * tasaAnterior) / tasaActual;
+
+      // Guardar nuevo precio
+      p.venta = Number(nuevoPrecio.toFixed(2));
+
+      await p.save();
+    }
+
+    return res.json({
+      ok: true,
+      msg: "Precios ajustados automáticamente.",
+      total: productos.length
+    });
+
+  } catch (error) {
+    return res.status(500).json({
+      ok: false,
+      msg: "Error ajustando precios",
+      error: error.message
+    });
+  }
+});
 
 export default router;
