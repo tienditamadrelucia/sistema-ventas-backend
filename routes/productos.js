@@ -36,9 +36,17 @@ router.get("/", async (req, res) => {
   try {
     let productos = await Producto.find().sort({ categoria: 1, codigo: 1 });
     productos = productos.map(p => {
-      if (p.foto && !p.foto.startsWith("http")) {
-        p.foto = `https://sistema-ventas-backend-qxbi.onrender.com/${p.foto.replace(/^\//, "")}`;
+      // Si NO hay foto → dejarlo así
+      if (!p.foto) return p;
+      // Si ya es URL completa → dejarla así
+      if (p.foto.startsWith("http")) return p;
+      // Si viene con /uploads/... → corregir
+      if (p.foto.startsWith("/")) {
+        p.foto = `https://sistema-ventas-backend-qxbi.onrender.com${p.foto}`;
+        return p;
       }
+      // Si viene como uploads/... → corregir
+      p.foto = `https://sistema-ventas-backend-qxbi.onrender.com/${p.foto}`;
       return p;
     });
     res.json(productos);
