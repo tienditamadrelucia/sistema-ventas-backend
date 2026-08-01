@@ -34,16 +34,18 @@ async function ordenarProductosDB() {
 // Obtener todos los productos
 router.get("/", async (req, res) => {
   try {
-    const productos = await Producto.find().sort({ 
-      categoria: 1,
-      codigo: 1
+    let productos = await Producto.find().sort({ categoria: 1, codigo: 1 });
+    productos = productos.map(p => {
+      if (p.foto && !p.foto.startsWith("http")) {
+        p.foto = `https://sistema-ventas-backend-qxbi.onrender.com/${p.foto.replace(/^\//, "")}`;
+      }
+      return p;
     });
     res.json(productos);
   } catch (error) {
     res.status(500).json({ ok: false, error: "Error obteniendo productos" });
   }
 });
-
 
 // Obtener el próximo código disponible
 router.get("/proximo-codigo", async (req, res) => {  
