@@ -35,17 +35,16 @@ async function ordenarProductosDB() {
 router.get("/", async (req, res) => {
   try {
     let productos = await Producto.find().sort({ categoria: 1, codigo: 1 });
+    // Convertir documentos Mongoose a objetos planos
+    productos = productos.map(p => p.toObject());
     productos = productos.map(p => {
-      // Si NO hay foto → dejarlo así
       if (!p.foto) return p;
-      // Si ya es URL completa → dejarla así
+      p.foto = p.foto.trim();
       if (p.foto.startsWith("http")) return p;
-      // Si viene con /uploads/... → corregir
       if (p.foto.startsWith("/")) {
         p.foto = `https://sistema-ventas-backend-qxbi.onrender.com${p.foto}`;
         return p;
       }
-      // Si viene como uploads/... → corregir
       p.foto = `https://sistema-ventas-backend-qxbi.onrender.com/${p.foto}`;
       return p;
     });
@@ -54,6 +53,7 @@ router.get("/", async (req, res) => {
     res.status(500).json({ ok: false, error: "Error obteniendo productos" });
   }
 });
+
 
 // Obtener el próximo código disponible
 router.get("/proximo-codigo", async (req, res) => {  
