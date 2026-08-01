@@ -192,7 +192,7 @@ router.post("/upload", upload.single("foto"), (req, res) => {
   res.json({ ok: true, url });
 });
 
-router.put("/ajustar-precios", soloAdmin, async (req, res) => {
+router.put("/ajustar-precios", async (req, res) => {
   try {
     const { tasaAnterior, tasaActual } = req.body;
 
