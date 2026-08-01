@@ -199,28 +199,21 @@ router.put("/ajustar-precios", async (req, res) => {
     if (!tasaAnterior || !tasaActual) {
       return res.json({ ok: false, msg: "Debe ingresar ambas tasas." });
     }
-
     const productos = await Producto.find();
-
     for (let p of productos) {
       // Guardar precio anterior
       p.precioanterior = p.venta;
-
       // Calcular nuevo precio
       const nuevoPrecio = (p.venta * tasaAnterior) / tasaActual;
-
       // Guardar nuevo precio
       p.venta = Number(nuevoPrecio.toFixed(2));
-
       await p.save();
     }
-
     return res.json({
       ok: true,
       msg: "Precios ajustados automáticamente.",
       total: productos.length
     });
-
   } catch (error) {
     return res.status(500).json({
       ok: false,
