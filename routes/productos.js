@@ -187,28 +187,6 @@ router.delete("/:id", async (req, res) => {
   }
 });
 
-// Carpeta donde se guardarán las fotos
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, "uploads/productos/");
-  },
-  filename: (req, file, cb) => {
-    const ext = path.extname(file.originalname);
-    cb(null, Date.now() + ext);
-  }
-});
-// const upload = multer({ storage });
-
-router.post("/productos/upload", upload.single("foto"), (req, res) => {
-  if (!req.file || !req.file.path) {
-    return res.json({ ok: false, error: "No se recibió archivo" });
-  }
-  res.json({
-    ok: true,
-    url: req.file.path
-  });
-});
-
 //fotos de productos
 router.post("/upload", upload.single("foto"), async (req, res) => {
   res.json({ url: req.file.path });
