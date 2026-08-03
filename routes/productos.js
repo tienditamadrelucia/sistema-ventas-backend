@@ -197,7 +197,7 @@ const storage = multer.diskStorage({
     cb(null, Date.now() + ext);
   }
 });
-const upload = multer({ storage });
+// const upload = multer({ storage });
 
 router.post("/productos/upload", upload.single("foto"), (req, res) => {
   if (!req.file || !req.file.path) {
