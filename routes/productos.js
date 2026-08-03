@@ -6,6 +6,7 @@ import dbSalidas from "../models/dbSalidas.js";
 import multer from "multer";
 import path from "path";
 import { fileURLToPath } from "url";
+import upload from "../config/cloudinary.js";
 
 
 const router = express.Router();
@@ -206,6 +207,11 @@ router.post("/productos/upload", upload.single("foto"), (req, res) => {
     ok: true,
     url: req.file.path
   });
+});
+
+//fotos de productos
+router.post("/upload", upload.single("foto"), async (req, res) => {
+  res.json({ url: req.file.path });
 });
 
 export default router;
