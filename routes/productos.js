@@ -32,6 +32,11 @@ async function ordenarProductosDB() {
   }  
 }
 
+//fotos de productos
+router.post("/upload", upload.single("foto"), async (req, res) => {
+  res.json({ url: req.file.path });
+});
+
 // Obtener todos los productos
 router.get("/", async (req, res) => {
   try {
@@ -187,9 +192,5 @@ router.delete("/:id", async (req, res) => {
   }
 });
 
-//fotos de productos
-router.post("/upload", upload.single("foto"), async (req, res) => {
-  res.json({ url: req.file.path });
-});
 
 export default router;
