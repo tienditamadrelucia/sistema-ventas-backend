@@ -6,27 +6,44 @@ const router = express.Router();
 // CREAR GASTO
 router.post("/", async (req, res) => {
   try {
-    const { numeroRecibo } = req.body;
-    // Validar duplicado SOLO en gastos abiertos
-    const existe = await dbGastos.findOne({
-      numeroRecibo,
-      cierre: "N"
-    });
-    if (existe) {
-      return res.status(400).json({
-        ok: false,
-        mensaje: "Ya existe un gasto con ese número de recibo"
-      });
+    let { numeroRecibo } = req.body;
+
+    // Normalizar valores vacíos o 0
+    if (!numeroRecibo || numeroRecibo === "0" || numeroRecibo === 0) {
+      numeroRecibo = null;
     }
+
+    // Validar duplicado SOLO si hay número real
+    if (numeroRecibo) {
+      const existe = await dbGastos.findOne({
+        numeroRecibo,
+        cierre: "N"
+      });
+
+      if (existe) {
+        return res.status(400).json({
+          ok: false,
+          mensaje: "Ya existe un gasto con ese número de recibo"
+        });
+      }
+    }
+
     // Crear gasto
-    const nuevo = new dbGastos(req.body); 
+    const nuevo = new dbGastos({
+      ...req.body,
+      numeroRecibo: numeroRecibo || null
+    });
+
     await nuevo.save();
+
     res.json({ ok: true, gasto: nuevo });
+
   } catch (error) {
     console.error("Error creando gasto:", error);
     res.status(500).json({ ok: false, error: "Error creando gasto" });
   }
 });
+
 
 // LISTAR GASTOS
 router.get("/", async (req, res) => {
