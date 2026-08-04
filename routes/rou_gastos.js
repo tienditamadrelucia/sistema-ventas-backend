@@ -19,7 +19,7 @@ router.post("/", async (req, res) => {
       });
     }
     // Crear gasto
-    const nuevo = new dbGastos(req.body);
+    const nuevo = new dbGastos(req.body); 
     await nuevo.save();
     res.json({ ok: true, gasto: nuevo });
   } catch (error) {
@@ -110,7 +110,7 @@ router.get("/gastos/:dia", async (req, res) => {
     const dia = new Date(req.params.dia);
     const siguiente = new Date(dia);
     siguiente.setDate(siguiente.getDate() + 1);
-    const lista = await Gastos.find({
+    const lista = await dbGastos.find({
       fecha: { $gte: dia, $lt: siguiente },
       cajaChica: true
     });

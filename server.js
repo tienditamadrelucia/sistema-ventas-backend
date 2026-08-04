@@ -26,7 +26,6 @@ import TipoGastos from "./routes/rou_tipogastos.js";
 import adminRoutes from "./routes/rou_integra.js";
 import repentradas from "./routes/entradas.js";
 import repsalidas from "./routes/rou_salidas.js";
-import repgastos from "./routes/rou_gastos.js";
 import repinventa from "./routes/rou_inventario.js";
 import resumenventas from "./routes/rou_ventas.js";
 import cierreMes from "./routes/rou_cierreMes.js";
