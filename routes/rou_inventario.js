@@ -265,10 +265,17 @@ router.get("/stock-real/:codigo", async (req, res) => {
       { $match: { productoId } },
       { $group: { _id: null, total: { $sum: "$cantidad" } } }
     ]);
+    // 3. Ventas
+    const ventas = await Vendidos.aggregate([
+      { $match: { productoId } },
+      { $group: { _id: null, total: { $sum: "$cantidad" } } }
+    ]);
+
     const totalEntradas = entradas?.[0]?.total || 0;
     const totalSalidas = salidas?.[0]?.total || 0;
+    const totalVentas = ventas?.[0]?.total || 0;
     // 4. Stock real
-    const stockReal = (producto.stock || 0) + totalEntradas - totalSalidas;
+    const stockReal = (producto.stock || 0) + totalEntradas - totalSalidas - totalVentas;
     // 5. Respuesta
     res.json({
       ok: true,
@@ -276,6 +283,7 @@ router.get("/stock-real/:codigo", async (req, res) => {
       stockInicial: producto.stock || 0,
       totalEntradas,
       totalSalidas,
+      totalVentas,
       stockReal
     });
   } catch (error) {
