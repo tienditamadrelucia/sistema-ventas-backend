@@ -120,53 +120,96 @@ router.post("/", async (req, res) => {
 router.get("/reporte", async (req, res) => {
   try {
     const { desde, hasta } = req.query;
+
     if (!desde || !hasta) {
       return res.status(400).json({ ok: false, mensaje: "Debe enviar ambas fechas" });
     }
-    const inicio = new Date(desde);
-    inicio.setHours(0, 0, 0, 0);
-    const fin = new Date(hasta);
-    fin.setHours(23, 59, 59, 999);
+
+    const inicio = new Date(desde + "T00:00:00");
+    const fin = new Date(hasta + "T23:59:59");
+
     const productos = await Producto.find().sort({ categoria: 1, codigo: 1 });
+
     const resultado = [];
+
     for (const p of productos) {
       const productoId = p._id;
-      // ENTRADAS
+
+      // 1️⃣ ENTRADAS dentro del rango
       const entradas = await Entrada.aggregate([
         { $match: { productoId, fecha: { $gte: inicio, $lte: fin } } },
         { $group: { _id: null, total: { $sum: "$cantidad" } } }
       ]);
-      // SALIDAS
+
+      // 2️⃣ SALIDAS dentro del rango
       const salidas = await Salida.aggregate([
         { $match: { productoId, fecha: { $gte: inicio, $lte: fin } } },
         { $group: { _id: null, total: { $sum: "$cantidad" } } }
       ]);
-      // VENDIDOS (pero filtrando crédito)
+
+      // 3️⃣ VENTAS válidas dentro del rango
       const vendidosLista = await Vendidos.find({
         productoId,
         fecha: { $gte: inicio, $lte: fin }
       });
-      let totalVendidosValidos = 0; // ⭐ ESTA ES LA VARIABLE CORRECTA
+
+      let totalVendidosValidos = 0;
+
       for (const v of vendidosLista) {
         const venta = await Ventas.findOne({ factura: v.factura });
         if (!venta) continue;
-        // 1. Venta contado → descontar
+
         if (venta.estado === "CONTADO") {
           totalVendidosValidos += v.cantidad;
           continue;
         }
-        // 2. Venta crédito cancelada → descontar
+
         if (venta.estado === "CREDITO" && venta.restaUSD <= 0) {
           totalVendidosValidos += v.cantidad;
           continue;
         }
-        // 3. Venta crédito NO cancelada → NO descontar
       }
+
+      // 4️⃣ STOCK INICIAL REAL (antes del rango)
+      // stockInicial = stockActual - movimientos posteriores al rango
+      const entradasPosteriores = await Entrada.aggregate([
+        { $match: { productoId, fecha: { $gt: fin } } },
+        { $group: { _id: null, total: { $sum: "$cantidad" } } }
+      ]);
+
+      const salidasPosteriores = await Salida.aggregate([
+        { $match: { productoId, fecha: { $gt: fin } } },
+        { $group: { _id: null, total: { $sum: "$cantidad" } } }
+      ]);
+
+      const ventasPosterioresLista = await Vendidos.find({
+        productoId,
+        fecha: { $gt: fin }
+      });
+
+      let ventasPosteriores = 0;
+
+      for (const v of ventasPosterioresLista) {
+        const venta = await Ventas.findOne({ factura: v.factura });
+        if (!venta) continue;
+
+        if (venta.estado === "CONTADO") ventasPosteriores += v.cantidad;
+        if (venta.estado === "CREDITO" && venta.restaUSD <= 0) ventasPosteriores += v.cantidad;
+      }
+
+      const stockInicial =
+        (p.stock || 0)
+        - (entradasPosteriores?.[0]?.total || 0)
+        + (salidasPosteriores?.[0]?.total || 0)
+        + ventasPosteriores;
+
+      // 5️⃣ STOCK REAL DEL RANGO
       const totalEntradas = entradas?.[0]?.total || 0;
       const totalSalidas = salidas?.[0]?.total || 0;
-      // ⭐ USAR SOLO LOS VENDIDOS VÁLIDOS
-      const stockInicial = p.stock || 0;
-      const stockReal = stockInicial + totalEntradas - totalSalidas - totalVendidosValidos;
+
+      const stockReal =
+        stockInicial + totalEntradas - totalSalidas - totalVendidosValidos;
+
       if (stockReal > 0) {
         resultado.push({
           _id: p._id,
@@ -179,12 +222,15 @@ router.get("/reporte", async (req, res) => {
         });
       }
     }
+
     res.json(resultado);
+
   } catch (error) {
     console.error("Error generando reporte de inventario:", error);
     res.status(500).json({ ok: false, mensaje: "Error generando reporte de inventario" });
   }
 });
+
 
 
 /*
