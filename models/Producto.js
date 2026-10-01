@@ -2,6 +2,14 @@ import mongoose from "mongoose";
 
 const ProductoSchema = new mongoose.Schema({
   codigo: { type: Number, required: true },
+
+  sede: {
+    type: String,
+    enum: ["TIENDITA", "MONASTERIO"],
+    default: "TIENDITA",
+    required: true
+  },
+
   descripcion: String,
   categoria: String,
   medida: String,

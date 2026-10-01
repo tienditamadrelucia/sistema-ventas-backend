@@ -12,6 +12,20 @@ import upload from "../config/cloudinary.js";
 const router = express.Router();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+const filtroPorSede = (sede) => {
+  if (sede === "MONASTERIO") {
+    return { sede: "MONASTERIO" };
+  }
+
+  // Los productos antiguos no tienen el campo sede.
+  // Esos pertenecen a la TIENDITA.
+  return {
+    $or: [
+      { sede: "TIENDITA" },
+      { sede: { $exists: false } }
+    ]
+  };
+};
 
 // ⭐ FUNCIÓN PARA ORDENAR TODA LA DB COMO TÚ QUIERES
 async function ordenarProductosDB() {
@@ -40,7 +54,10 @@ router.post("/upload", upload.single("foto"), async (req, res) => {
 // Obtener todos los productos
 router.get("/", async (req, res) => {
   try {
-    let productos = await Producto.find().sort({ categoria: 1, codigo: 1 });
+    const sede = req.query.sede || "TIENDITA";
+    let productos = await Producto.find(
+      filtroPorSede(sede)
+    ).sort({ categoria: 1, codigo: 1 });
     productos = productos.map(p => {
       p = p.toObject();
       if (!p.foto) return p;
@@ -63,14 +80,24 @@ router.get("/", async (req, res) => {
 });
 
 // Obtener el próximo código disponible
-router.get("/proximo-codigo", async (req, res) => {  
+router.get("/proximo-codigo", async (req, res) => {
   try {
-    const ultimo = await Producto.findOne().sort({ codigo: -1 });
+    const sede = req.query.sede || "TIENDITA";
+    const ultimo = await Producto.findOne(
+      filtroPorSede(sede)
+    ).sort({ codigo: -1 });
     const proximo = ultimo ? Number(ultimo.codigo) + 1 : 1;
-    res.json({ codigo: proximo, test: "VERSION-NUEVA" });
+    res.json({
+      codigo: proximo,
+      sede: sede,
+      test: "VERSION-SEDE"
+    });
   } catch (error) {
     console.error("Error obteniendo próximo código:", error);
-    res.status(500).json({ codigo: null, error: "Error obteniendo próximo código" });
+    res.status(500).json({
+      codigo: null,
+      error: "Error obteniendo próximo código"
+    });
   }
 });
 
@@ -87,18 +114,40 @@ router.get("/por-categoria/:codigo", async (req, res) => {
 // Crear producto
 router.post("/", async (req, res) => {
   try {
-    const ultimo = await Producto.findOne().sort({ codigo: -1 });
-    const nuevoCodigo = ultimo ? Number(ultimo.codigo) + 1 : 1;
+    const sede = req.body.sede === "MONASTERIO"
+      ? "MONASTERIO"
+      : "TIENDITA";
+
+    const ultimo = await Producto.findOne(
+      filtroPorSede(sede)
+    ).sort({ codigo: -1 });
+
+    const nuevoCodigo = ultimo
+      ? Number(ultimo.codigo) + 1
+      : 1;
+
     const nuevo = new Producto({
       ...req.body,
-      codigo: nuevoCodigo
+      codigo: nuevoCodigo,
+      sede: sede
     });
+
     await nuevo.save();
-    // ⭐ ORDENAR TODA LA DB DESPUÉS DE CREAR UN PRODUCTO
+
     await ordenarProductosDB();
-    res.json({ ok: true, producto: nuevo });
+
+    res.json({
+      ok: true,
+      producto: nuevo
+    });
+
   } catch (error) {
-    res.status(500).json({ ok: false, error: "Error creando producto" });
+    console.error("Error creando producto:", error);
+
+    res.status(500).json({
+      ok: false,
+      error: "Error creando producto"
+    });
   }
 });
 
