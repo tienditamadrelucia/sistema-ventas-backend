@@ -4,6 +4,19 @@ import Producto from "../models/Producto.js";
 
 const router = express.Router();
 
+const filtroPorSede = (sede) => {
+  if (sede === "MONASTERIO") {
+    return { sede: "MONASTERIO" };
+  }
+
+  return {
+    $or: [
+      { sede: "TIENDITA" },
+      { sede: { $exists: false } }
+    ]
+  };
+};
+
 // -------------------------------------------------------------
 // GET paginado (incluye costo y venta del producto)
 // -------------------------------------------------------------
@@ -13,12 +26,16 @@ router.get("/", async (req, res) => {
     const limit = parseInt(req.query.limit) || 20;
     const skip = (page - 1) * limit;
 
-    const total = await Entrada.countDocuments();
-    const entradas = await Entrada.find()
+    const sede = req.query.sede || "TIENDITA";
+    const filtro = filtroPorSede(sede);
+
+    const total = await Entrada.countDocuments(filtro);
+
+    const entradas = await Entrada.find(filtro)
       .sort({ fecha: -1, createdAt: -1 })
       .skip(skip)
       .limit(limit)
-      .populate("productoId", "codigo descripcion categoria costo venta");
+      .populate("productoId", "codigo descripcion categoria costo venta sede");
 
     res.json({
       total,
@@ -37,11 +54,31 @@ router.get("/", async (req, res) => {
 // -------------------------------------------------------------
 router.post("/", async (req, res) => {
   try {
-    const { fecha, categoria, productoId, codigo, cantidad, observacion, precioCompra, precioVenta } = req.body;
+    const {
+  fecha,
+  categoria,
+  productoId,
+  codigo,
+  cantidad,
+  observacion,
+  precioCompra,
+  precioVenta,
+  sede
+} = req.body;
+
+const sedeFinal = sede === "MONASTERIO" ? "MONASTERIO" : "TIENDITA";
 
     const producto = await Producto.findById(productoId);
     if (!producto) {
       return res.status(404).json({ ok: false, error: "Producto no encontrado." });
+    }
+    const sedeProducto =
+     producto.sede === "MONASTERIO" ? "MONASTERIO" : "TIENDITA";
+      if (sedeProducto !== sedeFinal) {
+        return res.status(400).json({
+        ok: false,
+        error: "El producto no pertenece a la sede seleccionada."
+      });
     }
 
     let precioCompraFinal = precioCompra;
@@ -95,7 +132,8 @@ router.post("/", async (req, res) => {
       cantidad,
       observacion,
       precioCompra: precioCompraFinal,
-      precioVenta: precioVentaFinal
+      precioVenta: precioVentaFinal,
+      sede: sedeFinal
     });
 
     res.json({ ok: true, entrada });
@@ -114,11 +152,33 @@ router.post("/", async (req, res) => {
 // -------------------------------------------------------------
 router.put("/:id", async (req, res) => {
   try {
-    const { fecha, categoria, productoId, codigo, cantidad, observacion, precioCompra, precioVenta } = req.body;
+    const {
+  fecha,
+  categoria,
+  productoId,
+  codigo,
+  cantidad,
+  observacion,
+  precioCompra,
+  precioVenta,
+  sede
+} = req.body;
+
+const sedeFinal = sede === "MONASTERIO" ? "MONASTERIO" : "TIENDITA";
 
     const producto = await Producto.findById(productoId);
     if (!producto) {
       return res.status(404).json({ ok: false, error: "Producto no encontrado." });
+    }
+
+    const sedeProducto =
+      producto.sede === "MONASTERIO" ? "MONASTERIO" : "TIENDITA";
+
+      if (sedeProducto !== sedeFinal) {
+        return res.status(400).json({
+        ok: false,
+        error: "El producto no pertenece a la sede seleccionada."
+      });
     }
 
     let precioCompraFinal = precioCompra;
@@ -174,7 +234,8 @@ router.put("/:id", async (req, res) => {
         cantidad,
         observacion,
         precioCompra: precioCompraFinal,
-        precioVenta: precioVentaFinal
+        precioVenta: precioVentaFinal,
+        sede: sedeFinal
       },
       { new: true }
     );

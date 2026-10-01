@@ -15,6 +15,12 @@ const entradaSchema = new mongoose.Schema(
       precioCompra: { type: Number },
       precioVenta: { type: Number },
       observacion: { type: String, required: true },
+      sede: {
+        type: String,
+        enum: ["TIENDITA", "MONASTERIO"],
+        default: "TIENDITA",
+        required: true
+      },
       cierre: { type: String, default: "N" }
     },
     { timestamps: true }
