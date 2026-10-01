@@ -14,6 +14,12 @@ const salidaSchema = new mongoose.Schema(
     cantidad: { type: Number, required: true },
     // Motivo de la salida: VENTA, AJUSTE, etc.
     observacion: { type: String, required: true },
+    sede: {
+      type: String,
+      enum: ["TIENDITA", "MONASTERIO"],
+      default: "TIENDITA",
+      required: true
+    },
     cierre: { type: String, default: "N" }
   },
   { timestamps: true }

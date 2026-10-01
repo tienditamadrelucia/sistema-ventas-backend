@@ -1,32 +1,50 @@
 // routes/rou_salidas.js
 import express from "express";
 import dbSalidas from "../models/dbSalidas.js";
+import Producto from "../models/Producto.js";
 
 const router = express.Router();
+const filtroPorSede = (sede) => {
+  if (sede === "MONASTERIO") {
+    return { sede: "MONASTERIO" };
+  }
 
-// GET paginado 
+  // Las salidas antiguas no tienen sede.
+  // Esas pertenecen a la TIENDITA.
+  return {
+    $or: [
+      { sede: "TIENDITA" },
+      { sede: { $exists: false } }
+    ]
+  };
+};
+
+// GET paginado
 router.get("/", async (req, res) => {
   try {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 20;
     const skip = (page - 1) * limit;
 
-    const total = await dbSalidas.countDocuments();
+    const sede = req.query.sede || "TIENDITA";
+    const filtro = filtroPorSede(sede);
+
+    const total = await dbSalidas.countDocuments(filtro);
 
     const salidas = await dbSalidas
-    .find()    
-    .populate("productoId", "codigo descripcion categoria")
-    .sort({ fecha: -1, createdAt: -1 })
-    .skip(skip)
-    .limit(limit);
-    console.log("SALIDA PRODUCTO:", salidas[0].productoId);
+      .find(filtro)
+      .populate("productoId", "codigo descripcion categoria sede")
+      .sort({ fecha: -1, createdAt: -1 })
+      .skip(skip)
+      .limit(limit);
+
     res.json({
       total,
       page,
       totalPages: Math.ceil(total / limit),
       salidas
     });
- 
+
   } catch (error) {
     return res.status(400).json({
       ok: false,
@@ -70,18 +88,56 @@ router.get("/reporte", async (req, res) => {
 // POST crear
 router.post("/", async (req, res) => {
   try {
-    const { fecha, categoria, productoId, codigo, cantidad, observacion } = req.body;
+    const {
+      fecha,
+      categoria,
+      productoId,
+      codigo,
+      cantidad,
+      observacion,
+      sede
+    } = req.body;
+
+    const sedeFinal =
+      sede === "MONASTERIO" ? "MONASTERIO" : "TIENDITA";
+
+    // Verificar que el producto exista
+    const producto = await Producto.findById(productoId);
+
+    if (!producto) {
+      return res.status(404).json({
+        ok: false,
+        error: "Producto no encontrado."
+      });
+    }
+
+    // Los productos antiguos sin sede pertenecen a TIENDITA
+    const sedeProducto =
+      producto.sede === "MONASTERIO"
+        ? "MONASTERIO"
+        : "TIENDITA";
+
+    if (sedeProducto !== sedeFinal) {
+      return res.status(400).json({
+        ok: false,
+        error: "El producto no pertenece a la sede seleccionada."
+      });
+    }
+
     const Unasalida = await dbSalidas.create({
       fecha: new Date(fecha),
       categoria,
       productoId,
       codigo,
       cantidad,
-      observacion
+      observacion,
+      sede: sedeFinal
     });
-    res.status(201).json({ ok: true, Unasalida });
-    console.log("RESPUESTA QUE SE VA A ENVIAR:", { ok: true, salida: Unasalida });
-  console.log("BODY RECIBIDO:", req.body);
+
+    res.status(201).json({
+      ok: true,
+      Unasalida
+    });
 
   } catch (error) {
     return res.status(400).json({
@@ -95,22 +151,48 @@ router.post("/", async (req, res) => {
 // PUT actualizar (solo fecha y cantidad)
 router.put("/:id", async (req, res) => {
   try {
-    const { fecha, cantidad } = req.body;
+    const { fecha, cantidad, sede } = req.body;
+
+    const sedeFinal =
+      sede === "MONASTERIO" ? "MONASTERIO" : "TIENDITA";
+
+    // Buscar primero la salida
+    const salidaExistente = await dbSalidas.findById(req.params.id);
+
+    if (!salidaExistente) {
+      return res.status(404).json({
+        ok: false,
+        mensaje: "Salida no encontrada"
+      });
+    }
+
+    // Las salidas antiguas sin sede pertenecen a TIENDITA
+    const sedeSalida =
+      salidaExistente.sede === "MONASTERIO"
+        ? "MONASTERIO"
+        : "TIENDITA";
+
+    if (sedeSalida !== sedeFinal) {
+      return res.status(400).json({
+        ok: false,
+        error: "La salida no pertenece a la sede seleccionada."
+      });
+    }
 
     const Unasalida = await dbSalidas.findByIdAndUpdate(
       req.params.id,
       {
         fecha: new Date(fecha),
-        cantidad
+        cantidad,
+        sede: sedeFinal
       },
       { new: true }
     );
 
-    if (!Unasalida) {
-      return res.status(404).json({ ok: false, mensaje: "Salida no encontrada" });
-    }
-
-    res.json({ ok: true, Salida: Unasalida });
+    res.json({
+      ok: true,
+      Salida: Unasalida
+    });
 
   } catch (error) {
     return res.status(400).json({
