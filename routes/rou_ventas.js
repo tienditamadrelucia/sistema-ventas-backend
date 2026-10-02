@@ -35,7 +35,7 @@ router.get("/factura-actual", async (req, res) => {
 // Guardar factura completa (venta + vendidos + pago)
 router.post("/guardar", async (req, res) => {
   try {
-    const { cliente, fecha, hora, subtotal, iva, total, usuario, estado, items, pago } = req.body;
+    const { cliente, fecha, hora, subtotal, iva, total, usuario, estado, items, pago, sede } = req.body;
     const numeroFactura = await asignarFactura(); // viene del controlador
     const venta = new Ventas({
       factura: numeroFactura,
@@ -46,7 +46,8 @@ router.post("/guardar", async (req, res) => {
       iva,
       total,
       usuario,
-      estado
+      estado,
+      sede: sede || "TIENDITA"
     });
     await venta.save();
     for (const item of items) {
@@ -408,69 +409,119 @@ router.get("/resumen", async (req, res) => {
 
 router.get("/reporte-categoria", async (req, res) => {
   try {
-    const { desde, hasta } = req.query;
+    const { desde, hasta, sede } = req.query;
+
     if (!desde || !hasta) {
-      return res.status(400).json({ ok: false, mensaje: "Debe enviar ambas fechas" });
+      return res.status(400).json({
+        ok: false,
+        mensaje: "Debe enviar ambas fechas"
+      });
     }
+
+    if (!sede) {
+      return res.status(400).json({
+        ok: false,
+        mensaje: "Debe indicar la sede"
+      });
+    }
+
     const inicio = new Date(desde);
     inicio.setHours(0, 0, 0, 0);
+
     const fin = new Date(hasta);
     fin.setHours(23, 59, 59, 999);
-    // 1. Buscar facturas CONTADO dentro del rango
+
+    // ============================================
+    // 1. BUSCAR FACTURAS CONTADO DE LA SEDE
+    // ============================================
     const ventasContado = await Ventas.find({
       estado: "CONTADO",
+      sede: sede,
       fecha: { $gte: inicio, $lte: fin }
     });
+
     const facturas = ventasContado.map(v => v.factura);
+
     if (facturas.length === 0) {
-      return res.json({ ok: true, reporte: {} });
+      return res.json({
+        ok: true,
+        reporte: {}
+      });
     }
-    // 2. Buscar productos vendidos
+
+    // ============================================
+    // 2. BUSCAR PRODUCTOS VENDIDOS
+    // ============================================
     const vendidos = await Vendidos.find({
       factura: { $in: facturas }
-    });
-    // 3. Buscar movimientos de moneda
+    }).populate("productoId");
+
+    // ============================================
+    // 3. BUSCAR MOVIMIENTOS DE MONEDA
+    // ============================================
     const movimientos = await Moneda.find({
       factura: { $in: facturas }
     });
-    // 4. Agrupar pagos por factura
+
+    // ============================================
+    // 4. AGRUPAR PAGOS POR FACTURA
+    // ============================================
     const pagosPorFactura = {};
+
     for (const mov of movimientos) {
       const f = mov.factura;
+
       if (!pagosPorFactura[f]) {
-        pagosPorFactura[f] = { P: 0, Bs: 0, D: 0 };
+        pagosPorFactura[f] = {
+          P: 0,
+          Bs: 0,
+          D: 0
+        };
       }
-      pagosPorFactura[f].P += (mov.efectivoP || 0) + (mov.transferenciaP || 0);
+
+      pagosPorFactura[f].P +=
+        (mov.efectivoP || 0) +
+        (mov.transferenciaP || 0);
+
       pagosPorFactura[f].Bs +=
         (mov.efectivoBs || 0) +
         (mov.transferenciaBs || 0) +
         (mov.puntoBs || 0) +
         (mov.pagomovilBs || 0);
-      pagosPorFactura[f].D += (mov.efectivoD || 0) + (mov.zelle || 0);
+
+      pagosPorFactura[f].D +=
+        (mov.efectivoD || 0) +
+        (mov.zelle || 0);
     }
-    // ⭐ 5. Tomar categorías desde la BD en el orden natural
-    const categorias = await Categoria.find().sort({ descripcion: 1 });
+
+    // ============================================
+    // 5. BUSCAR CATEGORÍAS
+    // ============================================
+    const categorias = await Categoria.find()
+      .sort({ descripcion: 1 });
+
     const reporte = {};
-    // ⭐ 6. Procesar categoría por categoría
+
+    // ============================================
+    // 6. PROCESAR CADA CATEGORÍA
+    // ============================================
     for (const cat of categorias) {
       const nombreCategoria = cat.descripcion;
       const codigoCategoria = cat.codigo;
-      // Inicializar categoría
+
       reporte[nombreCategoria] = {};
-      // Filtrar productos vendidos de esta categoría
-      const vendidosDeCategoria = vendidos.filter(v => {
-        const prod = v.productoId;
-        return true; // lo resolvemos abajo con populate
-      });
-      // Para evitar múltiples consultas, hacemos populate una sola vez
-      const vendidosPopulados = await Vendidos.find({
-        factura: { $in: facturas }
-      }).populate("productoId");
-      for (const v of vendidosPopulados) {
+
+      for (const v of vendidos) {
         const producto = v.productoId;
+
         if (!producto) continue;
-        if (producto.categoria !== codigoCategoria) continue;
+
+        if (producto.categoria !== codigoCategoria) {
+          continue;
+        }
+
         const descripcion = producto.descripcion;
+
         if (!reporte[nombreCategoria][descripcion]) {
           reporte[nombreCategoria][descripcion] = {
             cantidadVendida: 0,
@@ -482,34 +533,63 @@ router.get("/reporte-categoria", async (req, res) => {
             utilidad: 0
           };
         }
-        // Cantidad
-        reporte[nombreCategoria][descripcion].cantidadVendida += v.cantidad;
+
+        // Cantidad vendida
+        reporte[nombreCategoria][descripcion].cantidadVendida +=
+          v.cantidad;
+
         // Utilidad
         const utilidadItem =
-          (producto.venta - producto.costo) * v.cantidad;
-        reporte[nombreCategoria][descripcion].utilidad += utilidadItem;
-        // Pagos por factura
+          ((producto.venta || 0) - (producto.costo || 0)) *
+          v.cantidad;
+
+        reporte[nombreCategoria][descripcion].utilidad +=
+          utilidadItem;
+
+        // Pagos correspondientes a la factura
         const factura = v.factura;
+
         if (pagosPorFactura[factura]) {
-          reporte[nombreCategoria][descripcion].totalP += pagosPorFactura[factura].P;
-          reporte[nombreCategoria][descripcion].totalBs += pagosPorFactura[factura].Bs;
-          reporte[nombreCategoria][descripcion].totalD += pagosPorFactura[factura].D;
+          reporte[nombreCategoria][descripcion].totalP +=
+            pagosPorFactura[factura].P;
+
+          reporte[nombreCategoria][descripcion].totalBs +=
+            pagosPorFactura[factura].Bs;
+
+          reporte[nombreCategoria][descripcion].totalD +=
+            pagosPorFactura[factura].D;
         }
       }
-      // ⭐ Ordenar productos alfabéticamente
-      const productosOrdenados = Object.keys(reporte[nombreCategoria]).sort((a, b) =>
-        a.localeCompare(b, "es")
-      );
+
+      // ============================================
+      // 7. ORDENAR PRODUCTOS ALFABÉTICAMENTE
+      // ============================================
+      const productosOrdenados = Object.keys(
+        reporte[nombreCategoria]
+      ).sort((a, b) => a.localeCompare(b, "es"));
+
       const ordenados = {};
+
       for (const p of productosOrdenados) {
         ordenados[p] = reporte[nombreCategoria][p];
       }
+
       reporte[nombreCategoria] = ordenados;
     }
-    res.json({ ok: true, reporte });
+
+    res.json({
+      ok: true,
+      sede,
+      reporte
+    });
+
   } catch (error) {
     console.error("ERROR REPORTE CATEGORÍA:", error);
-    res.status(500).json({ ok: false, mensaje: "Error generando reporte" });
+
+    res.status(500).json({
+      ok: false,
+      mensaje: "Error generando reporte"
+    });
   }
 });
 

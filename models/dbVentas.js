@@ -10,6 +10,18 @@ const VentaSchema = new mongoose.Schema({
   total: { type: Number, required: true },
   usuario: { type: String, required: true },
   estado: { type: String, enum: ["CONTADO", "CREDITO"], required: true },
+  // ⭐ SEDE
+  sede: {
+    type: String,
+    enum: ["TIENDITA", "MONASTERIO"],
+    default: "TIENDITA"
+  },
+
+  estado: {
+    type: String,
+    enum: ["CONTADO", "CREDITO"],
+    required: true
+  },
   cierre: { type: String, default: "N" }
 }, { timestamps: true });
 
