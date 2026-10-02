@@ -6,7 +6,13 @@ const VendidoSchema = new mongoose.Schema({
   cantidad: { type: Number, required: true },
   precio: { type: Number, required: true },
   dscto: { type: Number, default: 0 },
-  total: { type: Number, required: true }
+  total: { type: Number, required: true },
+  sede: {
+    type: String,
+    enum: ["TIENDITA", "MONASTERIO"],
+    default: "TIENDITA",
+    required: true
+  }
 }, { timestamps: true });
 
 export default mongoose.model("vendidos", VendidoSchema);

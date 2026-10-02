@@ -1,15 +1,27 @@
 import express from "express";
 import Entrada from "../models/Entrada.js";
 import Salida from "../models/dbSalidas.js";
-import Venta from "../models/dbVentas.js";
 import Vendidos from "../models/dbVendidos.js";
 
 const router = express.Router();
+const filtroPorSede = (sede) => {
+  if (sede === "MONASTERIO") {
+    return { sede: "MONASTERIO" };
+  }
+
+  return {
+    $or: [
+      { sede: "TIENDITA" },
+      { sede: { $exists: false } }
+    ]
+  };
+};
 
 router.get("/:productoId", async (req, res) => {
   try {
     const { productoId } = req.params;
     const { fechaInicio, fechaFin } = req.query;
+    const sede = req.query.sede || "TIENDITA";
 
     const inicio = new Date(fechaInicio);
     const fin = new Date(fechaFin);
@@ -20,7 +32,8 @@ router.get("/:productoId", async (req, res) => {
     // ============================
     const entradas = await Entrada.find({
       productoId,
-      fecha: { $gte: inicio, $lte: fin }
+      fecha: { $gte: inicio, $lte: fin },
+      ...filtroPorSede(sede)
     });
 
     // ============================
@@ -28,7 +41,8 @@ router.get("/:productoId", async (req, res) => {
     // ============================
     const salidas = await Salida.find({
       productoId,
-      fecha: { $gte: inicio, $lte: fin }
+      fecha: { $gte: inicio, $lte: fin },
+      ...filtroPorSede(sede)
     });
 
     // ============================
