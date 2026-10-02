@@ -25,7 +25,10 @@ router.post("/login", async (req, res) => {
             usuario: {
                 id: user._id,
                 usuario: user.usuario,
-                rol: user.rol
+                rol: user.rol,
+                // Compatibilidad con usuarios antiguos
+                accesoTiendita: user.accesoTiendita !== false,
+                accesoMonasterio: user.accesoMonasterio === true
             }
         });
     } catch (error) {
@@ -99,7 +102,7 @@ router.delete("/:id", async (req, res) => {
 // CREAR USUARIO
 router.post("/", async (req, res) => {
   try {
-    const { nombre, usuario, clave, rol } = req.body;
+    const { nombre, usuario, clave, rol, accesoTiendita, accesoMonasterio } = req.body;
     if (!nombre || !usuario || !clave || !rol) {
       return res.status(400).json({ ok: false, mensaje: "Todos los campos son obligatorios" });
     }
@@ -109,7 +112,7 @@ router.post("/", async (req, res) => {
       return res.status(400).json({ ok: false, mensaje: "El usuario ya existe" });
     }
     // Crear usuario
-    const nuevo = await Usuario.create({ nombre, usuario, clave, rol });
+    const nuevo = await Usuario.create({ nombre, usuario, clave, rol, accesoTiendita: accesoTiendita !== false, accesoMonasterio: accesoMonasterio === true });
     // Devolver el usuario creado
     res.json({
       ok: true,
