@@ -65,22 +65,36 @@ router.get("/:id", async (req, res) => {
 router.get("/factura/:numero", async (req, res) => {
   try {
     const numero = req.params.numero;
-    const lista = await Moneda.find({ factura: numero });
+    const sede = req.query.sede || "TIENDITA";
+
+    const lista = await Moneda.find({
+      factura: numero,
+      sede: sede
+    });
+
     return res.json({ ok: true, lista });
+
   } catch (error) {
     console.error("Error buscando movimientos por factura:", error);
-    return res.status(500).json({ ok: false, mensaje: "Error en el servidor" });
+
+    return res.status(500).json({
+      ok: false,
+      mensaje: "Error en el servidor"
+    });
   }
 });
 
 // BUSCAR MOVIMIENTOS POR FECHA EXACTA
 router.get("/fecha/:dia", async (req, res) => {
   try {
+    const sede = req.query.sede || "TIENDITA";
+
     const dia = new Date(req.params.dia);
     const siguiente = new Date(dia);
     siguiente.setDate(siguiente.getDate() + 1);
 
     const lista = await Moneda.find({
+      sede: sede,
       fecha: { $gte: dia, $lt: siguiente }
     });
 
@@ -88,7 +102,11 @@ router.get("/fecha/:dia", async (req, res) => {
 
   } catch (error) {
     console.error("Error buscando movimientos por fecha:", error);
-    return res.status(500).json({ ok: false, mensaje: "Error en el servidor" });
+
+    return res.status(500).json({
+      ok: false,
+      mensaje: "Error en el servidor"
+    });
   }
 });
 

@@ -104,10 +104,22 @@ router.get("/proximo-codigo", async (req, res) => {
 // Obtener productos por categoría (solo UNA ruta)
 router.get("/por-categoria/:codigo", async (req, res) => {
   try {
-    const productos = await Producto.find({ categoria: req.params.codigo });
+    const sede = req.query.sede || "TIENDITA";
+
+    const productos = await Producto.find({
+      categoria: req.params.codigo,
+      ...filtroPorSede(sede)
+    }).sort({ codigo: 1 });
+
     res.json(productos);
+
   } catch (error) {
-    res.status(500).json({ ok: false, error: "Error obteniendo productos por categoría" });
+    console.error("Error obteniendo productos por categoría:", error);
+
+    res.status(500).json({
+      ok: false,
+      error: "Error obteniendo productos por categoría"
+    });
   }
 });
 

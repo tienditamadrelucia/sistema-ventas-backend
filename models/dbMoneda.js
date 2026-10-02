@@ -2,6 +2,11 @@ import mongoose from "mongoose";
 
 const MonedaSchema = new mongoose.Schema({
   fecha: { type: Date, required: true },
+  sede: {
+    type: String,
+    enum: ["TIENDITA", "MONASTERIO"],
+    default: "TIENDITA"
+  },
   operacion: { type: String, required: true }, // VENTA, ABONO, ANULACIÓN, etc.
   factura: { type: Number, required: true },
   total: { type: Number, required: true },
