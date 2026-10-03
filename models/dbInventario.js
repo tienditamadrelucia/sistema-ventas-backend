@@ -2,6 +2,11 @@ import mongoose from "mongoose";
 
 const InventarioSchema = new mongoose.Schema({
   fecha: { type: Date, required: true },          // Fecha de la toma de inventario
+  sede: {
+    type: String,
+    enum: ["TIENDITA", "MONASTERIO"],
+    default: "TIENDITA"
+  },
   categoria: { type: String, required: true},             // categoria
   productoId: { type: String, required: true },   // Código o ID del producto
   stockReal: { type: Number, required: true }, // Stock final del sistema en esa fecha

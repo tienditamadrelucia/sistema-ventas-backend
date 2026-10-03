@@ -10,61 +10,98 @@ import Entrada from "../models/Entrada.js";
 
 const router = express.Router();
 
-// ⚠️ IMPORTANTE: en cada schema debe existir:
-// cierre: { type: String, default: "N" }
-// mes: Number
-// año: Number
-
-// =========================
-//  CIERRE GENERAL DE MES
-// =========================
-// POST /api/cierre-mes
-// body: { mes: 5, año: 2026 }
-
-router.post("/cierre-mes", async (req, res) => {
-  const { mes, año } = req.body;
-
-  if (!mes || !año) {
-    return res.status(400).json({ ok: false, error: "Mes y año son obligatorios" });
+const filtroPorSede = (sede) => {
+  if (sede === "MONASTERIO") {
+    return { sede: "MONASTERIO" };
   }
 
+  return {
+    $or: [
+      { sede: "TIENDITA" },
+      { sede: { $exists: false } }
+    ]
+  };
+};
+
+router.post("/cierre-mes", async (req, res) => {
+  const { mes, año, sede } = req.body;
+
+  if (!mes || !año || !sede) {    
+    return res.status(400).json({
+      ok: false,
+      error: "Mes, año y sede son obligatorios"
+    });
+  }
+  
+  if (!["TIENDITA", "MONASTERIO"].includes(sede)) {
+    return res.status(400).json({
+      ok: false,
+      error: "Sede inválida"
+    });
+  }
+  const filtroSede = filtroPorSede(sede);
   const inicio = new Date(año, mes - 1, 1);
-  const fin = new Date(año, mes - 1, 31);
+  const fin = new Date(año, mes, 1);
 
   try {
     const rVentas = await dbVentas.updateMany(
-      { fecha: { $gte: inicio, $lte: fin }, estado: "CONTADO", cierre: "N" },
+      {
+        fecha: { $gte: inicio, $lt: fin },
+        estado: "CONTADO",
+        cierre: "N",
+        ...filtroSede
+      },
       { $set: { cierre: "S" } }
     );
 
     const rEntradas = await Entrada.updateMany(
-      { fecha: { $gte: inicio, $lte: fin }, cierre: "N" },
+      {
+        fecha: { $gte: inicio, $lt: fin },
+        cierre: "N",
+        ...filtroSede
+      },
       { $set: { cierre: "S" } }
     );
 
     const rSalidas = await dbSalidas.updateMany(
-      { fecha: { $gte: inicio, $lte: fin }, cierre: "N" },
+      {
+        fecha: { $gte: inicio, $lt: fin },
+        cierre: "N",
+        ...filtroSede
+      },
       { $set: { cierre: "S" } }
     );
 
     const rGastos = await dbGastos.updateMany(
-      { fecha: { $gte: inicio, $lte: fin }, cierre: "N" },
+      {
+        fecha: { $gte: inicio, $lt: fin },
+        cierre: "N",
+        ...filtroSede
+      },
       { $set: { cierre: "S" } }
     );
 
     const rCaja = await dbCaja.updateMany(
-      { fecha: { $gte: inicio, $lte: fin }, cierre: "N" },
+      {
+        fecha: { $gte: inicio, $lt: fin },
+        cierre: "N",
+        ...filtroSede
+      },
       { $set: { cierre: "S" } }
     );
 
     const rInventario = await dbInventario.updateMany(
-      { fecha: { $gte: inicio, $lte: fin }, cierre: "N" },
+      {
+        fecha: { $gte: inicio, $lt: fin },
+        cierre: "N",
+        ...filtroSede
+      },
       { $set: { cierre: "S" } }
     );
 
     res.json({
       ok: true,
-      mensaje: "Cierre de mes completado correctamente",
+      mensaje: `Cierre de mes de ${sede} completado correctamente`,
       detalle: {
         ventas: rVentas.modifiedCount,
         entradas: rEntradas.modifiedCount,
@@ -76,7 +113,12 @@ router.post("/cierre-mes", async (req, res) => {
     });
 
   } catch (error) {
-    res.status(500).json({ ok: false, error: error.message });
+    console.error("Error cerrando mes:", error);
+
+    res.status(500).json({
+      ok: false,
+      error: error.message
+    });
   }
 });
 
