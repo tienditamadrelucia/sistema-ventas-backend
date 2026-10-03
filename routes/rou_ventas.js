@@ -233,17 +233,40 @@ router.get("/detalle/:factura", async (req, res) => {
 router.get("/reporte/:desde/:hasta", async (req, res) => {
   try {
     const { desde, hasta } = req.params;
+    const sede = req.query.sede || "TIENDITA";
+
+    if (!["TIENDITA", "MONASTERIO"].includes(sede)) {
+      return res.status(400).json({
+        ok: false,
+        msg: "Sede inválida"
+      });
+    }
+
     const fechaInicio = new Date(desde + "T00:00:00");
     const fechaFin = new Date(hasta + "T23:59:59");
-    // 1. BUSCAR TODOS LOS MOVIMIENTOS DE DINERO DEL DÍA
+
+    const filtroSede = filtroPorSede(sede);
+
+    // =====================================================
+    // 1. MOVIMIENTOS DE DINERO DE ESTA SEDE
+    // =====================================================
     const movimientos = await Moneda.find({
-      fecha: { $gte: fechaInicio, $lte: fechaFin }
+      fecha: { $gte: fechaInicio, $lte: fechaFin },
+      ...filtroSede
     }).sort({ factura: 1 });
+
     if (movimientos.length === 0) {
-      return res.json({ ok: false, msg: "No hay movimientos en este rango" });
+      return res.json({
+        ok: false,
+        msg: "No hay movimientos en este rango"
+      });
     }
-    // Agrupar por factura
+
+    // =====================================================
+    // 2. AGRUPAR POR FACTURA
+    // =====================================================
     const facturasMap = {};
+
     for (const mov of movimientos) {
       if (!facturasMap[mov.factura]) {
         facturasMap[mov.factura] = {
@@ -264,27 +287,54 @@ router.get("/reporte/:desde/:hasta", async (req, res) => {
           }
         };
       }
-      // Guardar movimiento
+
       facturasMap[mov.factura].pagos.push(mov);
-      // Acumular totales
-      if (mov.operacion === "VENTA" || mov.operacion === "ABONO DE CREDITO") {
-        facturasMap[mov.factura].totales.efectivoP += mov.efectivoP;
-        facturasMap[mov.factura].totales.transferenciaP += mov.transferenciaP;
-        facturasMap[mov.factura].totales.efectivoBs += mov.efectivoBs;
-        facturasMap[mov.factura].totales.transferenciaBs += mov.transferenciaBs;
-        facturasMap[mov.factura].totales.puntoBs += mov.puntoBs;
-        facturasMap[mov.factura].totales.pagomovilBs += mov.pagomovilBs;
-        facturasMap[mov.factura].totales.efectivoD += mov.efectivoD;
-        facturasMap[mov.factura].totales.zelle += mov.zelle;
+
+      if (
+        mov.operacion === "VENTA" ||
+        mov.operacion === "ABONO DE CREDITO"
+      ) {
+        facturasMap[mov.factura].totales.efectivoP +=
+          Number(mov.efectivoP || 0);
+
+        facturasMap[mov.factura].totales.transferenciaP +=
+          Number(mov.transferenciaP || 0);
+
+        facturasMap[mov.factura].totales.efectivoBs +=
+          Number(mov.efectivoBs || 0);
+
+        facturasMap[mov.factura].totales.transferenciaBs +=
+          Number(mov.transferenciaBs || 0);
+
+        facturasMap[mov.factura].totales.puntoBs +=
+          Number(mov.puntoBs || 0);
+
+        facturasMap[mov.factura].totales.pagomovilBs +=
+          Number(mov.pagomovilBs || 0);
+
+        facturasMap[mov.factura].totales.efectivoD +=
+          Number(mov.efectivoD || 0);
+
+        facturasMap[mov.factura].totales.zelle +=
+          Number(mov.zelle || 0);
       }
+
+      // Los vueltos ya están guardados negativos
       if (mov.operacion === "VUELTOS") {
-        facturasMap[mov.factura].totales.vueltoP += mov.efectivoP;
-        facturasMap[mov.factura].totales.vueltoBs += mov.efectivoBs;
-        facturasMap[mov.factura].totales.vueltoD += mov.efectivoD;
+        facturasMap[mov.factura].totales.vueltoP +=
+          Number(mov.efectivoP || 0);
+
+        facturasMap[mov.factura].totales.vueltoBs +=
+          Number(mov.efectivoBs || 0);
+
+        facturasMap[mov.factura].totales.vueltoD +=
+          Number(mov.efectivoD || 0);
       }
     }
+
     const reporte = [];
-    let totalesGlobales = {
+
+    const totalesGlobales = {
       totalEfectivoP: 0,
       totalTransferenciaP: 0,
       totalEfectivoBs: 0,
@@ -297,19 +347,35 @@ router.get("/reporte/:desde/:hasta", async (req, res) => {
       totalVueltoBs: 0,
       totalVueltoD: 0
     };
-    // 2. COMPLETAR INFORMACIÓN DE CADA FACTURA
+
+    // =====================================================
+    // 3. COMPLETAR INFORMACIÓN DE CADA FACTURA
+    // =====================================================
     for (const factura in facturasMap) {
       const info = facturasMap[factura];
-      const venta = await Ventas.findOne({ factura });
-      const cliente = venta
-        ? await Cliente.findOne({ identificacion: venta.cliente })
-        : null;
-      const vendidos = venta
-        ? await Vendidos.find({ factura })
-        : [];
+
+      const venta = await Ventas.findOne({
+        factura: Number(factura),
+        ...filtroSede
+      });
+
+      // Si no existe la venta de esta sede, no incluirla
+      if (!venta) continue;
+
+      const cliente = await Cliente.findOne({
+        identificacion: venta.cliente
+      });
+
+      const vendidos = await Vendidos.find({
+        factura: Number(factura),
+        ...filtroSede
+      });
+
       const productos = [];
+
       for (const v of vendidos) {
         const prod = await Producto.findById(v.productoId);
+
         productos.push({
           codigo: prod?.codigo || "N/A",
           descripcion: prod?.descripcion || "Producto no encontrado",
@@ -320,35 +386,66 @@ router.get("/reporte/:desde/:hasta", async (req, res) => {
           total: v.total
         });
       }
-      // Acumular totales globales
+
       const t = info.totales;
-      totalesGlobales.totalEfectivoP += t.efectivoP + t.vueltoP;
-      totalesGlobales.totalTransferenciaP += t.transferenciaP;
-      totalesGlobales.totalEfectivoBs += t.efectivoBs + t.vueltoBs;
-      totalesGlobales.totalTransferenciaBs += t.transferenciaBs;
-      totalesGlobales.totalPuntoBs += t.puntoBs;
-      totalesGlobales.totalPagomovilBs += t.pagomovilBs;
-      totalesGlobales.totalEfectivoD += t.efectivoD + t.vueltoD;
-      totalesGlobales.totalZelle += t.zelle;
-      totalesGlobales.totalVueltoP += t.vueltoP;
-      totalesGlobales.totalVueltoBs += t.vueltoBs;
-      totalesGlobales.totalVueltoD += t.vueltoD;
+
+      totalesGlobales.totalEfectivoP +=
+        t.efectivoP + t.vueltoP;
+
+      totalesGlobales.totalTransferenciaP +=
+        t.transferenciaP;
+
+      totalesGlobales.totalEfectivoBs +=
+        t.efectivoBs + t.vueltoBs;
+
+      totalesGlobales.totalTransferenciaBs +=
+        t.transferenciaBs;
+
+      totalesGlobales.totalPuntoBs +=
+        t.puntoBs;
+
+      totalesGlobales.totalPagomovilBs +=
+        t.pagomovilBs;
+
+      totalesGlobales.totalEfectivoD +=
+        t.efectivoD + t.vueltoD;
+
+      totalesGlobales.totalZelle +=
+        t.zelle;
+
+      totalesGlobales.totalVueltoP +=
+        t.vueltoP;
+
+      totalesGlobales.totalVueltoBs +=
+        t.vueltoBs;
+
+      totalesGlobales.totalVueltoD +=
+        t.vueltoD;
+
       reporte.push({
         factura,
         venta,
-        clienteNombre: cliente?.nombreCompleto || "SIN NOMBRE",
+        clienteNombre:
+          cliente?.nombreCompleto || "SIN NOMBRE",
         productos,
         pagos: info.totales
       });
     }
-    res.json({
+
+    return res.json({
       ok: true,
+      sede,
       reporte,
       totales: totalesGlobales
     });
+
   } catch (error) {
-    console.log("ERROR REPORTE:", error);
-    res.status(500).json({ ok: false, msg: "Error generando reporte" });
+    console.error("ERROR REPORTE:", error);
+
+    return res.status(500).json({
+      ok: false,
+      msg: "Error generando reporte"
+    });
   }
 });
 
