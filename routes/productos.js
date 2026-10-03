@@ -163,6 +163,135 @@ router.post("/", async (req, res) => {
   }
 });
 
+// ==========================================
+// AJUSTAR PRECIOS AUTOMÁTICAMENTE
+// ==========================================
+router.put("/ajustar-precios", async (req, res) => {
+  try {
+    const { tasaAnterior, tasaActual, sede } = req.body;
+
+    // --------------------------------------
+    // VALIDACIONES
+    // --------------------------------------
+    if (!tasaAnterior || !tasaActual || !sede) {
+      return res.status(400).json({
+        ok: false,
+        msg: "Tasa anterior, tasa actual y sede son obligatorias."
+      });
+    }
+
+    const anterior = Number(tasaAnterior);
+    const actual = Number(tasaActual);
+
+    if (
+      !Number.isFinite(anterior) ||
+      !Number.isFinite(actual) ||
+      anterior <= 0 ||
+      actual <= 0
+    ) {
+      return res.status(400).json({
+        ok: false,
+        msg: "Las tasas deben ser números mayores que cero."
+      });
+    }
+
+    if (!["TIENDITA", "MONASTERIO"].includes(sede)) {
+      return res.status(400).json({
+        ok: false,
+        msg: "Sede inválida."
+      });
+    }
+
+    // --------------------------------------
+    // FILTRO POR SEDE
+    // --------------------------------------
+    // Los productos antiguos sin sede
+    // pertenecen a TIENDITA.
+    const filtroSede =
+      sede === "MONASTERIO"
+        ? { sede: "MONASTERIO" }
+        : {
+            $or: [
+              { sede: "TIENDITA" },
+              { sede: { $exists: false } }
+            ]
+          };
+
+    // --------------------------------------
+    // BUSCAR PRODUCTOS DE ESTA SEDE
+    // --------------------------------------
+    const productos = await Producto.find({
+      ...filtroSede
+    });
+
+    if (productos.length === 0) {
+      return res.status(404).json({
+        ok: false,
+        msg: `No hay productos registrados en ${sede}.`
+      });
+    }
+
+    let modificados = 0;
+
+    // --------------------------------------
+    // AJUSTAR CADA PRODUCTO
+    // --------------------------------------
+    for (const producto of productos) {
+      const precioActual = Number(producto.venta);
+
+      if (
+        !Number.isFinite(precioActual) ||
+        precioActual <= 0
+      ) {
+        continue;
+      }
+
+      // Guardamos el precio que tenía antes
+      producto.precioanterior = precioActual;
+
+      // Fórmula:
+      // precio nuevo =
+      // precio actual / tasa anterior * tasa actual
+      const nuevoPrecio =
+        (precioActual / anterior) * actual;
+
+      // Redondear a 2 decimales
+      producto.venta =
+        Math.round(nuevoPrecio * 100) / 100;
+
+      // Si es un registro antiguo de Tiendita
+      // aprovechamos para identificar su sede.
+      if (!producto.sede && sede === "TIENDITA") {
+        producto.sede = "TIENDITA";
+      }
+
+      await producto.save();
+
+      modificados++;
+    }
+
+    return res.json({
+      ok: true,
+      msg:
+        `Ajuste realizado correctamente en ${sede}.\n` +
+        `Productos actualizados: ${modificados}.`,
+      modificados
+    });
+
+  } catch (error) {
+    console.error(
+      "Error ajustando precios automáticamente:",
+      error
+    );
+
+    return res.status(500).json({
+      ok: false,
+      msg: "Error ajustando los precios.",
+      error: error.message
+    });
+  }
+});
+
 // Actualizar producto
 router.put("/:id", async (req, res) => {
   try {
@@ -252,6 +381,7 @@ router.delete("/:id", async (req, res) => {
     return res.status(500).json({ ok: false, error: "Error eliminando producto" });
   }
 });
+
 
 
 export default router;
