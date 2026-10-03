@@ -12,6 +12,7 @@ const router = express.Router();
 router.get("/:fecha", async (req, res) => {
     try {
         const { fecha } = req.params;
+        const sede = req.query.sede || "TIENDITA";
         // Validación básica
         if (!fecha || fecha.length !== 10) {
             return res.json({
@@ -21,7 +22,7 @@ router.get("/:fecha", async (req, res) => {
             });
         }
         // Buscar si existe un cuadre para esa fecha
-        const cuadre = await Caja.findOne({ fecha });
+        const cuadre = await Caja.findOne({ fecha, sede });
         if (!cuadre) {
             return res.json({
                 ok: true,
@@ -67,7 +68,8 @@ router.post("/", async (req, res) => {
 // ===============================
 router.get("/", async (req, res) => {
   try {
-    const lista = await Caja.find().sort({ fecha: -1 });
+    const sede = req.query.sede || "TIENDITA";
+    const lista = await Caja.find({ sede }).sort({ fecha: -1 });
     res.json({ ok: true, lista });
   } catch (error) {
     console.error("Error listando caja:", error);
@@ -80,7 +82,7 @@ router.get("/", async (req, res) => {
 // ===============================
 router.put("/", async (req, res) => {
   try {
-    const { _id, ...resto } = req.body;
+    const { _id, sede, ...resto } = req.body;
 
     if (!_id) {
       return res.json({
@@ -89,11 +91,11 @@ router.put("/", async (req, res) => {
       });
     }
 
-    const actualizado = await Caja.findByIdAndUpdate(
-      _id,
-      resto,
-      { new: true }
-    );
+    const actualizado = await Caja.findOneAndUpdate(
+  { _id, sede },
+  { ...resto, sede },
+  { new: true }
+);
 
     if (!actualizado) {
       return res.json({

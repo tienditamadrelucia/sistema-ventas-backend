@@ -5,8 +5,8 @@ const router = express.Router();
 
 // CREAR GASTO
 router.post("/", async (req, res) => {
-  try {
-    let { numeroRecibo } = req.body;
+  try { 
+    let { numeroRecibo, sede = "TIENDITA" } = req.body;
 
     // Normalizar valores vacíos o 0
     if (!numeroRecibo || numeroRecibo === "0" || numeroRecibo === 0) {
@@ -17,6 +17,7 @@ router.post("/", async (req, res) => {
     if (numeroRecibo) {
       const existe = await dbGastos.findOne({
         numeroRecibo,
+        sede,
         cierre: "N"
       });
 
@@ -48,7 +49,12 @@ router.post("/", async (req, res) => {
 // LISTAR GASTOS
 router.get("/", async (req, res) => {
   try {
-    const lista = await dbGastos.find().sort({ fecha: -1 });
+    const sede = req.query.sede || "TIENDITA";
+
+    const lista = await dbGastos
+      .find({ sede })
+      .sort({ fecha: -1 });
+
     res.json({ ok: true, lista });
   } catch (error) {
     console.error("Error listando gastos:", error);
@@ -60,6 +66,7 @@ router.get("/", async (req, res) => {
 router.get("/reporte", async (req, res) => {
   try {
     const { desde, hasta } = req.query;
+    const sede = req.query.sede || "TIENDITA";
     if (!desde || !hasta) {
       return res.status(400).json({
         ok: false,
@@ -71,7 +78,8 @@ router.get("/reporte", async (req, res) => {
     fin.setHours(23, 59, 59, 999);
     const gastos = await dbGastos
       .find({
-        fecha: { $gte: inicio, $lte: fin }
+        fecha: { $gte: inicio, $lte: fin },
+        sede
       })
       .sort({ fecha: 1 });
     res.json(gastos);
@@ -124,12 +132,14 @@ router.delete("/:id", async (req, res) => {
 
 router.get("/gastos/:dia", async (req, res) => {
   try {
+    const sede = req.query.sede || "TIENDITA";
     const dia = new Date(req.params.dia);
     const siguiente = new Date(dia);
     siguiente.setDate(siguiente.getDate() + 1);
     const lista = await dbGastos.find({
       fecha: { $gte: dia, $lt: siguiente },
-      cajaChica: true
+      cajaChica: true,
+      sede
     });
     return res.json({ ok: true, lista });
   } catch (error) {

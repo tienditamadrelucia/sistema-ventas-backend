@@ -1,6 +1,11 @@
 import mongoose from "mongoose";
 const dbCajaSchema = new mongoose.Schema({
   fecha: { type: Date, required: true },  
+  sede: {
+    type: String,
+    enum: ["TIENDITA", "MONASTERIO"],
+    default: "TIENDITA"
+  },
   cajaChica: {
     D: { type: Number, default: 0 },
     P: { type: Number, default: 0 },
