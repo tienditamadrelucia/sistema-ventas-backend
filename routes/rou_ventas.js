@@ -694,58 +694,6 @@ router.put("/cambiar-estado/:id", async (req, res) => {
   }
 });
 
-// =====================================================
-// TEMPORAL - INICIALIZAR CONTADORES POR SEDE
-// USAR UNA SOLA VEZ Y LUEGO ELIMINAR
-// =====================================================
-router.get("/inicializar-contadores/facturas", async (req, res) => {
-  try {
-    const tiendita = await Contador.findOneAndUpdate(
-      { tipo: "FACTURA_TIENDITA" },
-      {
-        $setOnInsert: {
-          valor: 9431
-        }
-      },
-      {
-        new: true,
-        upsert: true
-      }
-    );
-
-    const monasterio = await Contador.findOneAndUpdate(
-      { tipo: "FACTURA_MONASTERIO" },
-      {
-        $setOnInsert: {
-          valor: 0
-        }
-      },
-      {
-        new: true,
-        upsert: true
-      }
-    );
-
-    return res.json({
-      ok: true,
-      mensaje: "Contadores inicializados correctamente",
-      tiendita: tiendita.valor,
-      monasterio: monasterio.valor
-    });
-
-  } catch (error) {
-    console.error(
-      "Error inicializando contadores:",
-      error
-    );
-
-    return res.status(500).json({
-      ok: false,
-      mensaje: "Error inicializando contadores"
-    });
-  }
-});
-
 // Buscar venta por número de factura
 // Buscar venta/productos por número de factura POR SEDE
 router.get("/:factura", async (req, res) => {
