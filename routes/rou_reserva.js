@@ -117,32 +117,83 @@ router.delete("/cancelar-con-pago/:reservaId", async (req, res) => {
 router.delete("/eliminar-completa/:factura", async (req, res) => {
   try {
     const factura = Number(req.params.factura);
+    const sede = req.query.sede || "TIENDITA";
 
-    // 1. Eliminar reserva (si existe)
-    await FacturaReserva.findOneAndDelete({ numero: factura });
+    if (!["TIENDITA", "MONASTERIO"].includes(sede)) {
+      return res.status(400).json({
+        ok: false,
+        mensaje: "Sede inválida"
+      });
+    }
 
-    // 2. Eliminar pagos
-    await Moneda.deleteMany({ factura });
+    // =====================================================
+    // 1. ELIMINAR RESERVA
+    // =====================================================
+    // FacturaReserva pertenece al flujo antiguo.
+    // Por ahora solo intentamos eliminarla para TIENDITA,
+    // evitando afectar al Monasterio.
+    if (sede === "TIENDITA") {
+      await FacturaReserva.findOneAndDelete({
+        numero: factura
+      });
+    }
 
-    // 3. Eliminar ventas y vendidos
-    await Ventas.deleteMany({ factura });
-    await Vendidos.deleteMany({ factura });
+    // =====================================================
+    // 2. ELIMINAR MOVIMIENTOS DE MONEDA DE ESA SEDE
+    // =====================================================
+    await Moneda.deleteMany({
+      factura: factura,
+      sede: sede
+    });
 
-    // 4. Revertir contador SOLO si este número es el último
-    const contador = await Contador.findOne({ tipo: "FACTURA" });
-    if (contador.valor === factura) {
+    // =====================================================
+    // 3. ELIMINAR VENTA DE ESA SEDE
+    // =====================================================
+    await Ventas.deleteMany({
+      factura: factura,
+      sede: sede
+    });
+
+    // =====================================================
+    // 4. ELIMINAR PRODUCTOS VENDIDOS DE ESA SEDE
+    // =====================================================
+    await Vendidos.deleteMany({
+      factura: factura,
+      sede: sede
+    });
+
+    // =====================================================
+    // 5. CONTADOR CORRESPONDIENTE A LA SEDE
+    // =====================================================
+    const tipoContador =
+      sede === "MONASTERIO"
+        ? "FACTURA_MONASTERIO"
+        : "FACTURA_TIENDITA";
+
+    const contador = await Contador.findOne({
+      tipo: tipoContador
+    });
+
+    // Retroceder solamente si estamos eliminando
+    // exactamente la última factura emitida.
+    if (contador && contador.valor === factura) {
       await Contador.findOneAndUpdate(
-        { tipo: "FACTURA" },
+        { tipo: tipoContador },
         { $inc: { valor: -1 } }
       );
     }
 
     return res.json({
       ok: true,
-      mensaje: "Factura, pagos, vendidos y contador revertidos correctamente"
+      mensaje: `Factura ${factura} de ${sede} eliminada correctamente`
     });
+
   } catch (error) {
-    console.error("Error eliminando factura completa:", error);
+    console.error(
+      "Error eliminando factura completa:",
+      error
+    );
+
     return res.status(500).json({
       ok: false,
       mensaje: "Error eliminando factura completa",

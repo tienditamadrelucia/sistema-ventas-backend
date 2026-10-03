@@ -539,16 +539,17 @@ router.get("/reporte-categoria", async (req, res) => {
     // 2. BUSCAR PRODUCTOS VENDIDOS
     // ============================================
     const vendidos = await Vendidos.find({
-      factura: { $in: facturas }
+      factura: { $in: facturas },
+      sede: sede
     }).populate("productoId");
 
     // ============================================
     // 3. BUSCAR MOVIMIENTOS DE MONEDA
     // ============================================
     const movimientos = await Moneda.find({
-      factura: { $in: facturas }
+      factura: { $in: facturas },
+      sede: sede
     });
-
     // ============================================
     // 4. AGRUPAR PAGOS POR FACTURA
     // ============================================
