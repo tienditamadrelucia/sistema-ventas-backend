@@ -12,23 +12,76 @@ import Categoria from "../models/Categoria.js"
 
 const router = express.Router();
 
+const filtroPorSede = (sede) => {
+  if (sede === "MONASTERIO") {
+    return { sede: "MONASTERIO" };
+  }
+
+  return {
+    $or: [
+      { sede: "TIENDITA" },
+      { sede: { $exists: false } }
+    ]
+  };
+};
+ 
 router.post("/", crearVenta);
 router.get("/", obtenerVentas);
 
 // Número actual de factura (NO incrementa)
+// =====================================================
+// NÚMERO ACTUAL DE FACTURA POR SEDE
+// NO INCREMENTA
+// =====================================================
 router.get("/factura-actual", async (req, res) => {
-  console.log("factura-actual");
   try {
-    const db = conectarDB();
-    const contador = await Contador.findOne({ tipo: "FACTURA" });
-    console.log("contador ", contador);
-    if (!contador) {
-      return res.status(404).json({ ok: false, msg: "No existe contador FACTURA" });
+    const sede =
+      req.query.sede || "TIENDITA";
+
+    if (
+      sede !== "TIENDITA" &&
+      sede !== "MONASTERIO"
+    ) {
+      return res.status(400).json({
+        ok: false,
+        msg: "Sede inválida"
+      });
     }
-    return res.json({ ok: true, numero: contador.valor });
+
+    const tipoContador =
+      sede === "MONASTERIO"
+        ? "FACTURA_MONASTERIO"
+        : "FACTURA_TIENDITA";
+
+    let contador = await Contador.findOne({
+      tipo: tipoContador
+    });
+
+    // Si todavía no existe el contador,
+    // lo creamos en 0.
+    if (!contador) {
+      contador = await Contador.create({
+        tipo: tipoContador,
+        valor: 0
+      });
+    }
+
+    return res.json({
+      ok: true,
+      numero: contador.valor,
+      sede
+    });
+
   } catch (error) {
-    console.error("Error obteniendo número actual:", error);
-    return res.status(500).json({ ok: false, msg: "Error obteniendo número actual" });
+    console.error(
+      "Error obteniendo número actual:",
+      error
+    );
+
+    return res.status(500).json({
+      ok: false,
+      msg: "Error obteniendo número actual"
+    });
   }
 });
 
@@ -57,7 +110,8 @@ router.post("/guardar", async (req, res) => {
         cantidad: item.cantidad,
         precio: item.precioVenta,
         dscto: item.descuento || 0,
-        total: item.total
+        total: item.total,
+        sede: sede || "TIENDITA"
       }).save();
     }
     if (pago) {
@@ -117,24 +171,56 @@ router.get("/moneda/fecha/:fecha", async (req, res) => {
   }
 });
 
-// Detalle completo de una factura
+// Detalle completo de una factura POR SEDE
 router.get("/detalle/:factura", async (req, res) => {
   try {
     const factura = Number(req.params.factura);
-    const venta = await Ventas.findOne({ factura });
-    if (!venta) {
-      return res.json({ ok: false, msg: "Factura no encontrada" });
+    const sede = req.query.sede || "TIENDITA";
+
+    if (!["TIENDITA", "MONASTERIO"].includes(sede)) {
+      return res.status(400).json({
+        ok: false,
+        msg: "Sede inválida"
+      });
     }
-    const detalle = await Vendidos.find({ factura });
-    const pagos = await Moneda.find({ factura });
+
+    const filtroSede = filtroPorSede(sede);
+
+    const venta = await Ventas.findOne({
+      factura,
+      ...filtroSede
+    });
+
+    if (!venta) {
+      return res.json({
+        ok: false,
+        msg: "Factura no encontrada"
+      });
+    }
+
+    const detalle = await Vendidos.find({
+      factura,
+      ...filtroSede
+    });
+
+    const pagos = await Moneda.find({
+      factura,
+      ...filtroSede
+    });
+
     return res.json({
       ok: true,
       venta,
       detalle,
       pagos
     });
+
   } catch (error) {
-    console.error("Error consultando factura:", error);
+    console.error(
+      "Error consultando factura:",
+      error
+    );
+
     return res.status(500).json({
       ok: false,
       msg: "Error consultando factura"
@@ -608,14 +694,108 @@ router.put("/cambiar-estado/:id", async (req, res) => {
   }
 });
 
+// =====================================================
+// TEMPORAL - INICIALIZAR CONTADORES POR SEDE
+// USAR UNA SOLA VEZ Y LUEGO ELIMINAR
+// =====================================================
+router.get("/inicializar-contadores/facturas", async (req, res) => {
+  try {
+    const tiendita = await Contador.findOneAndUpdate(
+      { tipo: "FACTURA_TIENDITA" },
+      {
+        $setOnInsert: {
+          valor: 9431
+        }
+      },
+      {
+        new: true,
+        upsert: true
+      }
+    );
+
+    const monasterio = await Contador.findOneAndUpdate(
+      { tipo: "FACTURA_MONASTERIO" },
+      {
+        $setOnInsert: {
+          valor: 0
+        }
+      },
+      {
+        new: true,
+        upsert: true
+      }
+    );
+
+    return res.json({
+      ok: true,
+      mensaje: "Contadores inicializados correctamente",
+      tiendita: tiendita.valor,
+      monasterio: monasterio.valor
+    });
+
+  } catch (error) {
+    console.error(
+      "Error inicializando contadores:",
+      error
+    );
+
+    return res.status(500).json({
+      ok: false,
+      mensaje: "Error inicializando contadores"
+    });
+  }
+});
+
 // Buscar venta por número de factura
+// Buscar venta/productos por número de factura POR SEDE
 router.get("/:factura", async (req, res) => {
   try {
     const factura = Number(req.params.factura);
-    const vendidos = await Vendidos.find({ factura }).populate("productoId");
-    return res.json({ ok: true, vendidos });
+    const sede = req.query.sede || "TIENDITA";
+
+    if (!["TIENDITA", "MONASTERIO"].includes(sede)) {
+      return res.status(400).json({
+        ok: false,
+        msg: "Sede inválida"
+      });
+    }
+
+    const filtroSede = filtroPorSede(sede);
+
+    const venta = await Ventas.findOne({
+      factura,
+      ...filtroSede
+    });
+
+    if (!venta) {
+      return res.json({
+        ok: false,
+        venta: null,
+        vendidos: []
+      });
+    }
+
+    const vendidos = await Vendidos.find({
+      factura,
+      ...filtroSede
+    }).populate("productoId");
+
+    return res.json({
+      ok: true,
+      venta,
+      vendidos
+    });
+
   } catch (error) {
-    return res.status(500).json({ ok: false, msg: "Error cargando vendidos" });
+    console.error(
+      "Error cargando venta:",
+      error
+    );
+
+    return res.status(500).json({
+      ok: false,
+      msg: "Error cargando venta"
+    });
   }
 });
 
