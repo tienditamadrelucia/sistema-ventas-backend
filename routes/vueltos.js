@@ -13,9 +13,17 @@ router.post("/", async (req, res) => {
       fechaRegistro: new Date()
     });
 
-    res.json({ ok: true, id: resultado.insertedId });
+    res.json({
+      ok: true,
+      id: resultado.insertedId
+    });
+
   } catch (error) {
-    res.status(500).json({ ok: false, error: "Error guardando vuelto" });
+
+    res.status(500).json({
+      ok: false,
+      error: "Error guardando vuelto"
+    });
   }
 });
 

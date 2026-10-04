@@ -4,14 +4,32 @@ import Tasas from "../models/dbTasas.js";
 const router = express.Router();
 
 // Función para normalizar fecha a UTC 00:00:00
-function normalizarUTC(fecha) {
-  const f = new Date(fecha);
+function normalizarUTC(fecha = new Date()) {
+
+  const partes = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/Caracas",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).formatToParts(new Date(fecha));
+
+  const year = Number(
+    partes.find((p) => p.type === "year").value
+  );
+
+  const month = Number(
+    partes.find((p) => p.type === "month").value
+  );
+
+  const day = Number(
+    partes.find((p) => p.type === "day").value
+  );
 
   return new Date(
     Date.UTC(
-      f.getFullYear(),
-      f.getMonth(),
-      f.getDate(),
+      year,
+      month - 1,
+      day,
       0,
       0,
       0
