@@ -277,27 +277,65 @@ router.delete("/:id", async (req, res) => {
 // -------------------------------------------------------------
 router.get("/reporte", async (req, res) => {
   try {
-    const { desde, hasta } = req.query;
+    const { desde, hasta, sede } = req.query;
 
-    const filtro = {};
+    const sedeActual = sede || "TIENDITA";
 
+    if (!["TIENDITA", "MONASTERIO"].includes(sedeActual)) {
+      return res.status(400).json({
+        error: "Sede inválida"
+      });
+    }
+
+    // =====================================================
+    // FILTRO POR SEDE
+    // TIENDITA incluye registros antiguos sin campo sede
+    // =====================================================
+    const filtroSede =
+      sedeActual === "MONASTERIO"
+        ? { sede: "MONASTERIO" }
+        : {
+            $or: [
+              { sede: "TIENDITA" },
+              { sede: { $exists: false } }
+            ]
+          };
+
+    const filtro = {
+      ...filtroSede
+    };
+
+    // =====================================================
+    // FILTRO DE FECHAS
+    // =====================================================
     if (desde && hasta) {
+      const fechaDesde = new Date(`${desde}T00:00:00`);
+      const fechaHasta = new Date(`${hasta}T23:59:59.999`);
+
       filtro.fecha = {
-        $gte: new Date(desde),
-        $lte: new Date(hasta)
+        $gte: fechaDesde,
+        $lte: fechaHasta
       };
     }
 
+    // =====================================================
+    // CONSULTAR ENTRADAS
+    // =====================================================
     const entradas = await Entrada.find(filtro)
-      .populate("productoId", "codigo descripcion categoria costo venta")
+      .populate(
+        "productoId",
+        "codigo descripcion categoria costo venta"
+      )
       .sort({ fecha: 1 });
 
-    res.json(entradas);
+    return res.json(entradas);
 
   } catch (error) {
     console.error("Error en reporte de entradas:", error);
-    res.status(500).json({ error: "Error generando reporte" });
+
+    return res.status(500).json({
+      error: "Error generando reporte"
+    });
   }
 });
-
 export default router;
