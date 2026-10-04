@@ -1,5 +1,4 @@
 import express from "express";
-import { conectarDB } from "../db/conexion.js";
 import Ventas from "../models/dbVentas.js";
 import Vendidos from "../models/dbVendidos.js";
 import Moneda from "../models/dbMoneda.js";
@@ -11,6 +10,28 @@ import Contador from "../models/Contador.js";
 import Categoria from "../models/Categoria.js"
 
 const router = express.Router();
+
+// =====================================================
+// FECHA ACTUAL DE VENEZUELA
+// =====================================================
+function obtenerFechaVenezuela() {
+  const partes = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/Caracas",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).formatToParts(new Date());
+
+  const valores = {};
+
+  partes.forEach((parte) => {
+    if (parte.type !== "literal") {
+      valores[parte.type] = parte.value;
+    }
+  });
+
+  return `${valores.year}-${valores.month}-${valores.day}`;
+}
 
 const filtroPorSede = (sede) => {
   if (sede === "MONASTERIO") {
@@ -490,16 +511,22 @@ router.get("/reporte-creditos/:desde/:hasta", async (req, res) => {
     // Se usa solamente para expresar el saldo ACTUAL
     // en pesos y bolívares.
     // =====================================================
-    const hoy = new Date();
+    const hoy = obtenerFechaVenezuela();
 
-    const inicioHoy = normalizarUTC(hoy);
+    const [añoHoy, mesHoy, diaHoy] = hoy
+      .split("-")
+      .map(Number);
+
+    const inicioHoy = new Date(
+      Date.UTC(añoHoy, mesHoy - 1, diaHoy, 0, 0, 0)
+    );
 
     const finHoy = new Date(
-      inicioHoy.getTime() + 24 * 60 * 60 * 1000
+      Date.UTC(añoHoy, mesHoy - 1, diaHoy + 1, 0, 0, 0)
     );
 
     const tasaHoy = await Tasas.findOne({
-      ...filtroSede,
+      sede,
       fecha: {
         $gte: inicioHoy,
         $lt: finHoy
@@ -582,24 +609,40 @@ router.get("/reporte-creditos/:desde/:hasta", async (req, res) => {
       // ===================================================
       for (const movimiento of movimientos) {
 
-        // Fecha venezolana/normalizada del movimiento
-        const inicioMovimiento = normalizarUTC(
-          movimiento.fecha
+        const añoMovimiento = movimiento.fecha.getUTCFullYear();
+        const mesMovimiento = movimiento.fecha.getUTCMonth();
+        const diaMovimiento = movimiento.fecha.getUTCDate();
+
+        const inicioMovimiento = new Date(
+          Date.UTC(
+            añoMovimiento,
+            mesMovimiento,
+            diaMovimiento,
+            0,
+            0,
+            0
+          )
         );
 
         const finMovimiento = new Date(
-          inicioMovimiento.getTime() +
-          24 * 60 * 60 * 1000
+          Date.UTC(
+            añoMovimiento,
+            mesMovimiento,
+            diaMovimiento + 1,
+            0,
+            0,
+            0
+          )
         );
 
         // Buscar tasa correspondiente al día del movimiento
         const tasaMovimiento = await Tasas.findOne({
-          ...filtroSede,
+          sede,
           fecha: {
-            $gte: inicioMovimiento,
-            $lt: finMovimiento
+          $gte: inicioMovimiento,
+          $lt: finMovimiento
           }
-        });
+      });
 
         // Si por alguna razón no existe tasa histórica,
         // usamos la actual como respaldo para no romper
