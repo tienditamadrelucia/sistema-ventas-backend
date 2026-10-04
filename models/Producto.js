@@ -18,7 +18,38 @@ const ProductoSchema = new mongoose.Schema({
   costo: Number,
   venta: Number,
   precioanterior: Number,
-  foto: String
+  foto: String,
+
+  // -----------------------------------------
+  // ORIGEN DEL PRODUCTO
+  // -----------------------------------------
+
+  origen: {
+    type: String,
+    enum: ["COMPRADO", "PRODUCCION_MONASTERIO"],
+    default: "COMPRADO"
+  },
+
+  // -----------------------------------------
+  // LIQUIDACIÓN AL MONASTERIO
+  // Solo aplica a PRODUCCION_MONASTERIO
+  // -----------------------------------------
+
+  tipoLiquidacion: {
+    type: String,
+    enum: ["NINGUNA", "PORCENTAJE", "MONTO_FIJO"],
+    default: "NINGUNA"
+  },
+
+  valorLiquidacion: {
+    type: Number,
+    default: 0
+  },
+
+  liquidarAlMonasterio: {
+    type: Boolean,
+    default: false
+  }
 });
 
 export default mongoose.model("Producto", ProductoSchema);

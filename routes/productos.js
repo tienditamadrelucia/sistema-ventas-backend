@@ -123,13 +123,97 @@ router.get("/por-categoria/:codigo", async (req, res) => {
   }
 });
 
-// Crear producto
+// ==========================================
+// CREAR PRODUCTO
+// ==========================================
 router.post("/", async (req, res) => {
   try {
-    const sede = req.body.sede === "MONASTERIO"
-      ? "MONASTERIO"
-      : "TIENDITA";
+    const sede =
+      req.body.sede === "MONASTERIO"
+        ? "MONASTERIO"
+        : "TIENDITA";
 
+    const origen =
+      req.body.origen === "PRODUCCION_MONASTERIO"
+        ? "PRODUCCION_MONASTERIO"
+        : "COMPRADO";
+
+    let liquidarAlMonasterio = false;
+    let tipoLiquidacion = "NINGUNA";
+    let valorLiquidacion = 0;
+    let costo = Number(req.body.costo || 0);
+
+    // --------------------------------------
+    // PRODUCTO COMPRADO
+    // --------------------------------------
+    if (origen === "COMPRADO") {
+      liquidarAlMonasterio = false;
+      tipoLiquidacion = "NINGUNA";
+      valorLiquidacion = 0;
+
+      if (costo < 0) {
+        return res.status(400).json({
+          ok: false,
+          error: "El precio de costo no puede ser negativo."
+        });
+      }
+    }
+
+    // --------------------------------------
+    // PRODUCCIÓN DEL MONASTERIO
+    // --------------------------------------
+    if (origen === "PRODUCCION_MONASTERIO") {
+      // No existe costo de adquisición para la Tiendita.
+      costo = 0;
+
+      liquidarAlMonasterio =
+        req.body.liquidarAlMonasterio === true;
+
+      if (liquidarAlMonasterio) {
+        if (
+          !["PORCENTAJE", "MONTO_FIJO"].includes(
+            req.body.tipoLiquidacion
+          )
+        ) {
+          return res.status(400).json({
+            ok: false,
+            error:
+              "Debe seleccionar la forma de liquidación al Monasterio."
+          });
+        }
+
+        tipoLiquidacion = req.body.tipoLiquidacion;
+        valorLiquidacion = Number(
+          req.body.valorLiquidacion || 0
+        );
+
+        if (
+          !Number.isFinite(valorLiquidacion) ||
+          valorLiquidacion <= 0
+        ) {
+          return res.status(400).json({
+            ok: false,
+            error:
+              "El valor de liquidación debe ser mayor que cero."
+          });
+        }
+
+        if (
+          tipoLiquidacion === "PORCENTAJE" &&
+          valorLiquidacion > 100
+        ) {
+          return res.status(400).json({
+            ok: false,
+            error:
+              "El porcentaje de liquidación no puede ser mayor de 100%."
+          });
+        }
+      }
+    }
+
+    // --------------------------------------
+    // PRÓXIMO CÓDIGO POR SEDE
+    // --------------------------------------
     const ultimo = await Producto.findOne(
       filtroPorSede(sede)
     ).sort({ codigo: -1 });
@@ -138,17 +222,27 @@ router.post("/", async (req, res) => {
       ? Number(ultimo.codigo) + 1
       : 1;
 
+    // --------------------------------------
+    // CREAR PRODUCTO
+    // --------------------------------------
     const nuevo = new Producto({
       ...req.body,
+
       codigo: nuevoCodigo,
-      sede: sede
+      sede,
+      costo,
+
+      origen,
+      liquidarAlMonasterio,
+      tipoLiquidacion,
+      valorLiquidacion
     });
 
     await nuevo.save();
 
     await ordenarProductosDB();
 
-    res.json({
+    return res.json({
       ok: true,
       producto: nuevo
     });
@@ -156,7 +250,7 @@ router.post("/", async (req, res) => {
   } catch (error) {
     console.error("Error creando producto:", error);
 
-    res.status(500).json({
+    return res.status(500).json({
       ok: false,
       error: "Error creando producto"
     });
@@ -292,17 +386,131 @@ router.put("/ajustar-precios", async (req, res) => {
   }
 });
 
-// Actualizar producto
+// ==========================================
+// ACTUALIZAR PRODUCTO
+// ==========================================
 router.put("/:id", async (req, res) => {
   try {
+    const producto = await Producto.findById(req.params.id);
+
+    if (!producto) {
+      return res.status(404).json({
+        ok: false,
+        error: "Producto no encontrado"
+      });
+    }
+
+    const origen =
+      req.body.origen === "PRODUCCION_MONASTERIO"
+        ? "PRODUCCION_MONASTERIO"
+        : "COMPRADO";
+
+    let liquidarAlMonasterio = false;
+    let tipoLiquidacion = "NINGUNA";
+    let valorLiquidacion = 0;
+    let costo = Number(req.body.costo || 0);
+
+    // --------------------------------------
+    // PRODUCTO COMPRADO
+    // --------------------------------------
+    if (origen === "COMPRADO") {
+      liquidarAlMonasterio = false;
+      tipoLiquidacion = "NINGUNA";
+      valorLiquidacion = 0;
+
+      if (costo < 0) {
+        return res.status(400).json({
+          ok: false,
+          error: "El precio de costo no puede ser negativo."
+        });
+      }
+    }
+
+    // --------------------------------------
+    // PRODUCCIÓN DEL MONASTERIO
+    // --------------------------------------
+    if (origen === "PRODUCCION_MONASTERIO") {
+      costo = 0;
+
+      liquidarAlMonasterio =
+        req.body.liquidarAlMonasterio === true;
+
+      if (liquidarAlMonasterio) {
+        if (
+          !["PORCENTAJE", "MONTO_FIJO"].includes(
+            req.body.tipoLiquidacion
+          )
+        ) {
+          return res.status(400).json({
+            ok: false,
+            error:
+              "Debe seleccionar la forma de liquidación al Monasterio."
+          });
+        }
+
+        tipoLiquidacion = req.body.tipoLiquidacion;
+        valorLiquidacion = Number(
+          req.body.valorLiquidacion || 0
+        );
+
+        if (
+          !Number.isFinite(valorLiquidacion) ||
+          valorLiquidacion <= 0
+        ) {
+          return res.status(400).json({
+            ok: false,
+            error:
+              "El valor de liquidación debe ser mayor que cero."
+          });
+        }
+
+        if (
+          tipoLiquidacion === "PORCENTAJE" &&
+          valorLiquidacion > 100
+        ) {
+          return res.status(400).json({
+            ok: false,
+            error:
+              "El porcentaje de liquidación no puede ser mayor de 100%."
+          });
+        }
+      }
+    }
+
     const actualizado = await Producto.findByIdAndUpdate(
       req.params.id,
-      req.body,
-      { new: true }
+      {
+        ...req.body,
+
+        // No permitimos cambiar la sede ni el código
+        // accidentalmente desde esta operación.
+        codigo: producto.codigo,
+        sede: producto.sede,
+
+        costo,
+        origen,
+        liquidarAlMonasterio,
+        tipoLiquidacion,
+        valorLiquidacion
+      },
+      {
+        new: true,
+        runValidators: true
+      }
     );
-    res.json({ ok: true, producto: actualizado });
+
+    return res.json({
+      ok: true,
+      producto: actualizado
+    });
+
   } catch (error) {
-    res.status(500).json({ ok: false, error: "Error actualizando producto" });
+    console.error("Error actualizando producto:", error);
+
+    return res.status(500).json({
+      ok: false,
+      error: "Error actualizando producto"
+    });
   }
 });
 
