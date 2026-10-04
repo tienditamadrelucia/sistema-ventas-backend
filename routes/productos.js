@@ -126,6 +126,7 @@ router.get("/por-categoria/:codigo", async (req, res) => {
 // ==========================================
 // CREAR PRODUCTO
 // ==========================================
+
 router.post("/", async (req, res) => {
   try {
     const sede =
@@ -138,20 +139,24 @@ router.post("/", async (req, res) => {
         ? "PRODUCCION_MONASTERIO"
         : "COMPRADO";
 
-    let liquidarAlMonasterio = false;
-    let tipoLiquidacion = "NINGUNA";
-    let valorLiquidacion = 0;
+    let generaParticipacion = false;
+    let beneficiarioParticipacion = "NINGUNO";
+    let tipoParticipacion = "NINGUNA";
+    let valorParticipacion = 0;
+
     let costo = Number(req.body.costo || 0);
 
     // --------------------------------------
     // PRODUCTO COMPRADO
     // --------------------------------------
-    if (origen === "COMPRADO") {
-      liquidarAlMonasterio = false;
-      tipoLiquidacion = "NINGUNA";
-      valorLiquidacion = 0;
 
-      if (costo < 0) {
+    if (origen === "COMPRADO") {
+      generaParticipacion = false;
+      beneficiarioParticipacion = "NINGUNO";
+      tipoParticipacion = "NINGUNA";
+      valorParticipacion = 0;
+
+      if (!Number.isFinite(costo) || costo < 0) {
         return res.status(400).json({
           ok: false,
           error: "El precio de costo no puede ser negativo."
@@ -162,50 +167,65 @@ router.post("/", async (req, res) => {
     // --------------------------------------
     // PRODUCCIÓN DEL MONASTERIO
     // --------------------------------------
+
     if (origen === "PRODUCCION_MONASTERIO") {
-      // No existe costo de adquisición para la Tiendita.
+      // El producto terminado no tiene costo
+      // de adquisición en esta sede.
+      // Sus costos reales se controlarán
+      // posteriormente por actividad/producto.
       costo = 0;
 
-      liquidarAlMonasterio =
-        req.body.liquidarAlMonasterio === true;
+      generaParticipacion =
+        req.body.generaParticipacion === true;
 
-      if (liquidarAlMonasterio) {
+      if (generaParticipacion) {
+        // El beneficiario siempre es la OTRA sede.
+        beneficiarioParticipacion =
+          sede === "TIENDITA"
+            ? "MONASTERIO"
+            : "TIENDITA";
+
         if (
           !["PORCENTAJE", "MONTO_FIJO"].includes(
-            req.body.tipoLiquidacion
+            req.body.tipoParticipacion
           )
         ) {
           return res.status(400).json({
             ok: false,
             error:
-              "Debe seleccionar la forma de liquidación al Monasterio."
+              `Debe seleccionar la forma de participación para ${
+                beneficiarioParticipacion === "MONASTERIO"
+                  ? "el Monasterio"
+                  : "la Tiendita"
+              }.`
           });
         }
 
-        tipoLiquidacion = req.body.tipoLiquidacion;
-        valorLiquidacion = Number(
-          req.body.valorLiquidacion || 0
+        tipoParticipacion = req.body.tipoParticipacion;
+
+        valorParticipacion = Number(
+          req.body.valorParticipacion || 0
         );
 
         if (
-          !Number.isFinite(valorLiquidacion) ||
-          valorLiquidacion <= 0
+          !Number.isFinite(valorParticipacion) ||
+          valorParticipacion <= 0
         ) {
           return res.status(400).json({
             ok: false,
             error:
-              "El valor de liquidación debe ser mayor que cero."
+              "El valor de la participación debe ser mayor que cero."
           });
         }
 
         if (
-          tipoLiquidacion === "PORCENTAJE" &&
-          valorLiquidacion > 100
+          tipoParticipacion === "PORCENTAJE" &&
+          valorParticipacion > 100
         ) {
           return res.status(400).json({
             ok: false,
             error:
-              "El porcentaje de liquidación no puede ser mayor de 100%."
+              "El porcentaje de participación no puede ser mayor de 100%."
           });
         }
       }
@@ -214,6 +234,7 @@ router.post("/", async (req, res) => {
     // --------------------------------------
     // PRÓXIMO CÓDIGO POR SEDE
     // --------------------------------------
+
     const ultimo = await Producto.findOne(
       filtroPorSede(sede)
     ).sort({ codigo: -1 });
@@ -225,17 +246,19 @@ router.post("/", async (req, res) => {
     // --------------------------------------
     // CREAR PRODUCTO
     // --------------------------------------
+
     const nuevo = new Producto({
       ...req.body,
 
       codigo: nuevoCodigo,
       sede,
       costo,
-
       origen,
-      liquidarAlMonasterio,
-      tipoLiquidacion,
-      valorLiquidacion
+
+      generaParticipacion,
+      beneficiarioParticipacion,
+      tipoParticipacion,
+      valorParticipacion
     });
 
     await nuevo.save();
@@ -389,6 +412,7 @@ router.put("/ajustar-precios", async (req, res) => {
 // ==========================================
 // ACTUALIZAR PRODUCTO
 // ==========================================
+
 router.put("/:id", async (req, res) => {
   try {
     const producto = await Producto.findById(req.params.id);
@@ -400,25 +424,35 @@ router.put("/:id", async (req, res) => {
       });
     }
 
+    // Conservamos la sede original del producto.
+    const sede =
+      producto.sede === "MONASTERIO"
+        ? "MONASTERIO"
+        : "TIENDITA";
+
     const origen =
       req.body.origen === "PRODUCCION_MONASTERIO"
         ? "PRODUCCION_MONASTERIO"
         : "COMPRADO";
 
-    let liquidarAlMonasterio = false;
-    let tipoLiquidacion = "NINGUNA";
-    let valorLiquidacion = 0;
+    let generaParticipacion = false;
+    let beneficiarioParticipacion = "NINGUNO";
+    let tipoParticipacion = "NINGUNA";
+    let valorParticipacion = 0;
+
     let costo = Number(req.body.costo || 0);
 
     // --------------------------------------
     // PRODUCTO COMPRADO
     // --------------------------------------
-    if (origen === "COMPRADO") {
-      liquidarAlMonasterio = false;
-      tipoLiquidacion = "NINGUNA";
-      valorLiquidacion = 0;
 
-      if (costo < 0) {
+    if (origen === "COMPRADO") {
+      generaParticipacion = false;
+      beneficiarioParticipacion = "NINGUNO";
+      tipoParticipacion = "NINGUNA";
+      valorParticipacion = 0;
+
+      if (!Number.isFinite(costo) || costo < 0) {
         return res.status(400).json({
           ok: false,
           error: "El precio de costo no puede ser negativo."
@@ -429,49 +463,61 @@ router.put("/:id", async (req, res) => {
     // --------------------------------------
     // PRODUCCIÓN DEL MONASTERIO
     // --------------------------------------
+
     if (origen === "PRODUCCION_MONASTERIO") {
       costo = 0;
 
-      liquidarAlMonasterio =
-        req.body.liquidarAlMonasterio === true;
+      generaParticipacion =
+        req.body.generaParticipacion === true;
 
-      if (liquidarAlMonasterio) {
+      if (generaParticipacion) {
+        // El beneficiario siempre es la OTRA sede.
+        beneficiarioParticipacion =
+          sede === "TIENDITA"
+            ? "MONASTERIO"
+            : "TIENDITA";
+
         if (
           !["PORCENTAJE", "MONTO_FIJO"].includes(
-            req.body.tipoLiquidacion
+            req.body.tipoParticipacion
           )
         ) {
           return res.status(400).json({
             ok: false,
             error:
-              "Debe seleccionar la forma de liquidación al Monasterio."
+              `Debe seleccionar la forma de participación para ${
+                beneficiarioParticipacion === "MONASTERIO"
+                  ? "el Monasterio"
+                  : "la Tiendita"
+              }.`
           });
         }
 
-        tipoLiquidacion = req.body.tipoLiquidacion;
-        valorLiquidacion = Number(
-          req.body.valorLiquidacion || 0
+        tipoParticipacion = req.body.tipoParticipacion;
+
+        valorParticipacion = Number(
+          req.body.valorParticipacion || 0
         );
 
         if (
-          !Number.isFinite(valorLiquidacion) ||
-          valorLiquidacion <= 0
+          !Number.isFinite(valorParticipacion) ||
+          valorParticipacion <= 0
         ) {
           return res.status(400).json({
             ok: false,
             error:
-              "El valor de liquidación debe ser mayor que cero."
+              "El valor de la participación debe ser mayor que cero."
           });
         }
 
         if (
-          tipoLiquidacion === "PORCENTAJE" &&
-          valorLiquidacion > 100
+          tipoParticipacion === "PORCENTAJE" &&
+          valorParticipacion > 100
         ) {
           return res.status(400).json({
             ok: false,
             error:
-              "El porcentaje de liquidación no puede ser mayor de 100%."
+              "El porcentaje de participación no puede ser mayor de 100%."
           });
         }
       }
@@ -482,16 +528,18 @@ router.put("/:id", async (req, res) => {
       {
         ...req.body,
 
-        // No permitimos cambiar la sede ni el código
-        // accidentalmente desde esta operación.
+        // No permitimos cambiar accidentalmente
+        // código ni sede.
         codigo: producto.codigo,
         sede: producto.sede,
 
         costo,
         origen,
-        liquidarAlMonasterio,
-        tipoLiquidacion,
-        valorLiquidacion
+
+        generaParticipacion,
+        beneficiarioParticipacion,
+        tipoParticipacion,
+        valorParticipacion
       },
       {
         new: true,
@@ -584,7 +632,7 @@ router.delete("/:id", async (req, res) => {
 
     return res.json({ ok: true });
 
-  } catch (error) {
+  } catch (error) { 
     console.error("🔥 ERROR REAL ELIMINANDO PRODUCTO:", error);
     return res.status(500).json({ ok: false, error: "Error eliminando producto" });
   }

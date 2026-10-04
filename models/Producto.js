@@ -31,24 +31,40 @@ const ProductoSchema = new mongoose.Schema({
   },
 
   // -----------------------------------------
-  // LIQUIDACIÓN AL MONASTERIO
-  // Solo aplica a PRODUCCION_MONASTERIO
+  // PARTICIPACIÓN ENTRE SEDES
+  //
+  // Ejemplos:
+  //
+  // TIENDITA vende pollo:
+  // beneficiarioParticipacion = MONASTERIO
+  //
+  // MONASTERIO vende pollo:
+  // beneficiarioParticipacion = TIENDITA
+  //
+  // La participación se genera AL VENDER,
+  // no cuando el producto ingresa al inventario.
   // -----------------------------------------
 
-  tipoLiquidacion: {
+  generaParticipacion: {
+    type: Boolean,
+    default: false
+  },
+
+  beneficiarioParticipacion: {
+    type: String,
+    enum: ["TIENDITA", "MONASTERIO", "NINGUNO"],
+    default: "NINGUNO"
+  },
+
+  tipoParticipacion: {
     type: String,
     enum: ["NINGUNA", "PORCENTAJE", "MONTO_FIJO"],
     default: "NINGUNA"
   },
 
-  valorLiquidacion: {
+  valorParticipacion: {
     type: Number,
     default: 0
-  },
-
-  liquidarAlMonasterio: {
-    type: Boolean,
-    default: false
   }
 });
 
