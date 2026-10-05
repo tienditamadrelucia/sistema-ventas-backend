@@ -150,24 +150,28 @@ router.post("/pago", async (req, res) => {
 
     const montoNumero = Math.round((detalleVentas.reduce((suma, v) => suma + v.montoParticipacion, 0) + Number.EPSILON) * 100) / 100;
     if (montoNumero <= 0) return res.status(400).json({ ok: false, mensaje: "Las ventas seleccionadas no generan participación." });
-
+console.log("PASO 1 - antes de crear gasto");
     gastoCreado = await dbGastos.create({
       fecha: fechaNormalizada, sede: sedePaga, descripcion: "LIQUIDACIÓN DE PARTICIPACIÓN POR VENTAS",
       clasificacion: "TRANSFERENCIA_PARTICIPACION", actividadProductiva: null, moneda: "D",
       monto: montoNumero, numeroRecibo: reciboGasto, cajaChica: false, usuario: usuario || "", cierre: "N"
     });
+console.log("PASO 2 - gasto creado");    
 
     const horaActual = new Intl.DateTimeFormat("en-US", { timeZone: "America/Caracas", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date());
 
     if (sedeRecibe === "TIENDITA") {
+console.log("PASO 3 - antes de obtener factura");      
       facturaTiendita = await FacturaNro("TIENDITA") + 1;
-
+console.log("PASO 4 - factura obtenida:", facturaTiendita);
+console.log("PASO 5 - antes de crear ingreso Tiendita");
       ingresoCreado = await ventas.create({
         fecha: fechaNormalizada, hora: horaActual, tipoMovimiento: "OTRO_INGRESO", factura: facturaTiendita,
         cliente: "", subtotal: montoNumero, IVA: 0, total: montoNumero, usuario: usuario || "ADMIN",
         estado: "CONTADO", numeroReciboIngreso: "", conceptoIngreso: "LIQUIDACIÓN DE PARTICIPACIÓN POR VENTAS",
         origenIngreso: "PARTICIPACION", sedeOrigenIngreso: sedePaga, sede: "TIENDITA", cierre: "N"
       });
+console.log("PASO 6 - ingreso Tiendita creado");
     } else {
       ingresoCreado = await ventas.create({
         fecha: fechaNormalizada, hora: horaActual, tipoMovimiento: "OTRO_INGRESO", factura: null,
@@ -176,7 +180,7 @@ router.post("/pago", async (req, res) => {
         origenIngreso: "PARTICIPACION", sedeOrigenIngreso: sedePaga, sede: "MONASTERIO", cierre: "N"
       });
     }
-
+console.log("PASO 7 - antes de crear PagoParticipacion");
     pagoCreado = await PagoParticipacion.create({
       fecha: fechaNormalizada, sedePaga, sedeRecibe, monto: montoNumero, detalleVentas,
       numeroReciboGasto: reciboGasto, numeroReciboIngreso: sedeRecibe === "MONASTERIO" ? reciboIngreso : "",
@@ -184,9 +188,12 @@ router.post("/pago", async (req, res) => {
       gastoGenerado: gastoCreado._id, ingresoGenerado: ingresoCreado._id,
       observacion: observacion?.trim() || "", usuario: usuario || ""
     });
+console.log("PASO 8 - PagoParticipacion creado");    
 
     if (sedeRecibe === "TIENDITA") {
+console.log("PASO 9 - antes de incrementar contador");      
       await asignarFactura("TIENDITA");
+console.log("PASO 10 - contador incrementado");      
       contadorIncrementado = true;
     }
 
