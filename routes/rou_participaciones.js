@@ -1,6 +1,8 @@
 import express from "express";
 import Vendidos from "../models/dbVendidos.js";
 import PagoParticipacion from "../models/dbPagoParticipacion.js";
+import dbGastos from "../models/dbGastos.js";
+import ventas from "../models/dbVentas.js";
 
 const router = express.Router();
 
@@ -39,26 +41,37 @@ function fechaUTC(fecha) {
 // REGISTRAR PAGO / ENTREGA DE PARTICIPACIÓN
 // ======================================================
 router.post("/pago", async (req, res) => {
+  let gastoCreado = null;
+  let ingresoCreado = null;
+  let pagoCreado = null;
+
   try {
     const {
       fecha,
       sedePaga,
       sedeRecibe,
       monto,
+      numeroReciboEgreso,
+      numeroReciboIngreso,
       observacion,
       usuario
     } = req.body;
 
+    // ==================================================
+    // 1. VALIDACIONES BÁSICAS
+    // ==================================================
     if (
       !fecha ||
       !sedePaga ||
       !sedeRecibe ||
-      !monto
+      !monto ||
+      !numeroReciboEgreso ||
+      !numeroReciboIngreso
     ) {
       return res.status(400).json({
         ok: false,
         mensaje:
-          "Debe completar fecha, sede que paga, sede que recibe y monto."
+          "Debe completar fecha, sede que paga, sede que recibe, monto, recibo de egreso y recibo de ingreso."
       });
     }
 
@@ -80,7 +93,10 @@ router.post("/pago", async (req, res) => {
       });
     }
 
-    const montoNumero = Number(monto);
+    const montoNumero =
+      Math.round(
+        (Number(monto) + Number.EPSILON) * 100
+      ) / 100;
 
     if (
       !Number.isFinite(montoNumero) ||
@@ -103,42 +119,353 @@ router.post("/pago", async (req, res) => {
       });
     }
 
-    const pago =
-      await PagoParticipacion.create({
-        fecha: fechaNormalizada,
-        sedePaga,
-        sedeRecibe,
-        monto:
-          Math.round(
-            (montoNumero + Number.EPSILON) *
-              100
-          ) / 100,
-        observacion:
-          observacion?.trim() || "",
-        usuario: usuario || ""
+    const reciboEgreso =
+      String(numeroReciboEgreso).trim();
+
+    const reciboIngreso =
+      String(numeroReciboIngreso).trim();
+
+    if (!reciboEgreso || !reciboIngreso) {
+      return res.status(400).json({
+        ok: false,
+        mensaje:
+          "Los números de recibo son obligatorios."
+      });
+    }
+
+
+    // ==================================================
+    // 2. VERIFICAR RECIBO DE EGRESO
+    // ==================================================
+    const gastoExistente =
+      await dbGastos.findOne({
+        sede: sedePaga,
+        numeroRecibo: reciboEgreso
       });
 
+    if (gastoExistente) {
+      return res.status(400).json({
+        ok: false,
+        mensaje:
+          `Ya existe el recibo de egreso ${reciboEgreso} en ${sedePaga}.`
+      });
+    }
+
+
+    // ==================================================
+    // 3. VERIFICAR RECIBO DE INGRESO
+    // ==================================================
+    const ingresoExistente =
+      await ventas.findOne({
+        sede: sedeRecibe,
+        tipoMovimiento: "OTRO_INGRESO",
+        numeroReciboIngreso: reciboIngreso
+      });
+
+    if (ingresoExistente) {
+      return res.status(400).json({
+        ok: false,
+        mensaje:
+          `Ya existe el recibo de ingreso ${reciboIngreso} en ${sedeRecibe}.`
+      });
+    }
+
+
+    // ==================================================
+    // 4. VERIFICAR QUE LA LIQUIDACIÓN NO ESTÉ REPETIDA
+    // ==================================================
+    const pagoConReciboEgreso =
+      await PagoParticipacion.findOne({
+        sedePaga,
+        numeroReciboEgreso: reciboEgreso
+      });
+
+    if (pagoConReciboEgreso) {
+      return res.status(400).json({
+        ok: false,
+        mensaje:
+          "Ese recibo de egreso ya fue utilizado en una liquidación de participación."
+      });
+    }
+
+    const pagoConReciboIngreso =
+      await PagoParticipacion.findOne({
+        sedeRecibe,
+        numeroReciboIngreso: reciboIngreso
+      });
+
+    if (pagoConReciboIngreso) {
+      return res.status(400).json({
+        ok: false,
+        mensaje:
+          "Ese recibo de ingreso ya fue utilizado en una liquidación de participación."
+      });
+    }
+
+
+    // ==================================================
+    // 5. CALCULAR PARTICIPACIÓN GENERADA
+    // ==================================================
+    const vendidos = await Vendidos.find({
+      sede: sedePaga,
+      beneficiarioParticipacion: sedeRecibe,
+      generaParticipacion: true,
+      montoParticipacion: {
+        $gt: 0
+      }
+    });
+
+    const totalGenerado =
+      vendidos.reduce(
+        (acumulado, vendido) =>
+          acumulado +
+          Number(
+            vendido.montoParticipacion || 0
+          ),
+        0
+      );
+
+
+    // ==================================================
+    // 6. CALCULAR LO YA PAGADO
+    // ==================================================
+    const pagosAnteriores =
+      await PagoParticipacion.find({
+        sedePaga,
+        sedeRecibe
+      });
+
+    const totalPagado =
+      pagosAnteriores.reduce(
+        (acumulado, pago) =>
+          acumulado +
+          Number(pago.monto || 0),
+        0
+      );
+
+    const pendiente =
+      Math.round(
+        (
+          totalGenerado -
+          totalPagado +
+          Number.EPSILON
+        ) * 100
+      ) / 100;
+
+
+    // ==================================================
+    // 7. VALIDAR SALDO PENDIENTE
+    // ==================================================
+    if (pendiente <= 0) {
+      return res.status(400).json({
+        ok: false,
+        mensaje:
+          `${sedePaga} no tiene participación pendiente por pagar a ${sedeRecibe}.`
+      });
+    }
+
+    if (montoNumero > pendiente) {
+      return res.status(400).json({
+        ok: false,
+        mensaje:
+          `El pago no puede superar el saldo pendiente de $${pendiente.toFixed(2)}.`
+      });
+    }
+
+
+    // ==================================================
+    // 8. CREAR EGRESO EN LA SEDE QUE PAGA
+    // ==================================================
+    gastoCreado =
+      await dbGastos.create({
+        fecha: fechaNormalizada,
+
+        sede: sedePaga,
+
+        descripcion:
+          "LIQUIDACIÓN DE PARTICIPACIÓN POR VENTAS",
+
+        clasificacion:
+          "TRANSFERENCIA_PARTICIPACION",
+
+        actividadProductiva: null,
+
+        moneda: "D",
+
+        monto: montoNumero,
+
+        numeroRecibo: reciboEgreso,
+
+        cajaChica: false,
+
+        usuario: usuario || "",
+
+        cierre: "N"
+      });
+
+
+    // ==================================================
+    // 9. CREAR OTRO INGRESO EN LA SEDE QUE RECIBE
+    // ==================================================
+    ingresoCreado =
+      await ventas.create({
+        fecha: fechaNormalizada,
+
+        hora: new Intl.DateTimeFormat(
+          "en-US",
+          {
+            timeZone: "America/Caracas",
+            hour: "2-digit",
+            minute: "2-digit",
+            hour12: false
+          }
+        ).format(new Date()),
+
+        tipoMovimiento:
+          "OTRO_INGRESO",
+
+        factura: null,
+
+        cliente: "",
+
+        subtotal: montoNumero,
+
+        IVA: 0,
+
+        total: montoNumero,
+
+        usuario: usuario || "ADMIN",
+
+        estado: "CONTADO",
+
+        numeroReciboIngreso:
+          reciboIngreso,
+
+        conceptoIngreso:
+          "LIQUIDACIÓN DE PARTICIPACIÓN POR VENTAS",
+
+        origenIngreso:
+          "PARTICIPACION",
+
+        sedeOrigenIngreso:
+          sedePaga,
+
+        sede: sedeRecibe,
+
+        cierre: "N"
+      });
+
+
+    // ==================================================
+    // 10. GUARDAR PAGO DE PARTICIPACIÓN
+    // ==================================================
+    pagoCreado =
+      await PagoParticipacion.create({
+        fecha: fechaNormalizada,
+
+        sedePaga,
+
+        sedeRecibe,
+
+        monto: montoNumero,
+
+        numeroReciboEgreso:
+          reciboEgreso,
+
+        numeroReciboIngreso:
+          reciboIngreso,
+
+        gastoGenerado:
+          gastoCreado._id,
+
+        ingresoGenerado:
+          ingresoCreado._id,
+
+        observacion:
+          observacion?.trim() || "",
+
+        usuario:
+          usuario || ""
+      });
+
+
+    // ==================================================
+    // 11. RESPUESTA
+    // ==================================================
     return res.json({
       ok: true,
+
       mensaje:
-        "Pago de participación registrado.",
-      pago
+        "Liquidación de participación registrada correctamente.",
+
+      pago: pagoCreado,
+
+      gasto: gastoCreado,
+
+      ingreso: ingresoCreado,
+
+      saldoAnterior: pendiente,
+
+      saldoPendiente:
+        Math.round(
+          (
+            pendiente -
+            montoNumero +
+            Number.EPSILON
+          ) * 100
+        ) / 100
     });
 
   } catch (error) {
+
     console.error(
       "Error registrando pago de participación:",
       error
     );
 
+
+    // ==================================================
+    // ROLLBACK MANUAL
+    // Si algo falla, eliminamos lo que alcanzó a crearse.
+    // ==================================================
+
+    try {
+
+      if (pagoCreado?._id) {
+        await PagoParticipacion.findByIdAndDelete(
+          pagoCreado._id
+        );
+      }
+
+      if (ingresoCreado?._id) {
+        await ventas.findByIdAndDelete(
+          ingresoCreado._id
+        );
+      }
+
+      if (gastoCreado?._id) {
+        await dbGastos.findByIdAndDelete(
+          gastoCreado._id
+        );
+      }
+
+    } catch (rollbackError) {
+      console.error(
+        "🔴 Error realizando rollback:",
+        rollbackError
+      );
+    }
+
+
     return res.status(500).json({
       ok: false,
+
       mensaje:
-        "Error registrando pago de participación."
+        error.message ||
+        "Error registrando la liquidación de participación."
     });
   }
 });
-
 
 // ======================================================
 // ESTADO DE CUENTA GENERAL
