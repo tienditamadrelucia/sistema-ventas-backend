@@ -4,6 +4,7 @@ import PagoParticipacion from "../models/dbPagoParticipacion.js";
 import dbGastos from "../models/dbGastos.js";
 import ventas from "../models/dbVentas.js";
 import {FacturaNro, asignarFactura} from "../controllers/con_ventas.js";
+import Moneda from "../models/dbMoneda.js";
 
 const router = express.Router();
 
@@ -91,7 +92,7 @@ router.get("/ventas-pendientes", async (req, res) => {
 // REGISTRAR PAGO / LIQUIDACIÓN DE PARTICIPACIÓN
 // ======================================================
 router.post("/pago", async (req, res) => {
-  let gastoCreado = null, ingresoCreado = null, pagoCreado = null, facturaTiendita = null, contadorIncrementado = false;
+  let gastoCreado = null, ingresoCreado = null, monedaCreada = null, pagoCreado = null, facturaTiendita = null, contadorIncrementado = false;
 
   try {
     const { fecha, sedePaga, sedeRecibe, numeroReciboGasto, numeroReciboIngreso, observacion, usuario, vendidosSeleccionados } = req.body;
@@ -168,6 +169,14 @@ router.post("/pago", async (req, res) => {
         estado: "CONTADO", numeroReciboIngreso: "", conceptoIngreso: "LIQUIDACIÓN DE PARTICIPACIÓN POR VENTAS",
         origenIngreso: "PARTICIPACION", sedeOrigenIngreso: sedePaga, sede: "TIENDITA", cierre: "N"
       });
+        monedaCreada = await Moneda.create({
+          fecha: fechaNormalizada,
+          sede: "TIENDITA",
+          operacion: "VENTA",
+          factura: facturaTiendita,
+          total: montoNumero,
+          efectivoD: montoNumero
+        });
     } else {
       ingresoCreado = await ventas.create({
         fecha: fechaNormalizada, hora: horaActual, tipoMovimiento: "OTRO_INGRESO", factura: null,
@@ -204,6 +213,7 @@ router.post("/pago", async (req, res) => {
 
     try {
       if (pagoCreado?._id) await PagoParticipacion.findByIdAndDelete(pagoCreado._id);
+      if (monedaCreada?._id) await Moneda.findByIdAndDelete(monedaCreada._id);
       if (ingresoCreado?._id) await ventas.findByIdAndDelete(ingresoCreado._id);
       if (gastoCreado?._id) await dbGastos.findByIdAndDelete(gastoCreado._id);
       if (contadorIncrementado) console.error("⚠️ Revisar contador de factura TIENDITA: fue incrementado antes de producirse un error.");
