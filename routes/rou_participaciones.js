@@ -160,7 +160,7 @@ router.post("/pago", async (req, res) => {
     const horaActual = new Intl.DateTimeFormat("en-US", { timeZone: "America/Caracas", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date());
 
     if (sedeRecibe === "TIENDITA") {
-      facturaTiendita = await FacturaNro("TIENDITA");
+      facturaTiendita = await FacturaNro("TIENDITA") + 1;
 
       ingresoCreado = await ventas.create({
         fecha: fechaNormalizada, hora: horaActual, tipoMovimiento: "OTRO_INGRESO", factura: facturaTiendita,
