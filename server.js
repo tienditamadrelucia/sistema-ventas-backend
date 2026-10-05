@@ -21,6 +21,7 @@ import reservaRoutes from "./routes/rou_reserva.js";
 import ventas from "./routes/rou_ventas.js";
 import vendidos from "./routes/rou_vendidos.js";
 import gastos from "./routes/rou_gastos.js";
+import ingresos from "./routes/rou_ingresos.js";
 import caja from "./routes/rou_caja.js";
 import TipoGastos from "./routes/rou_tipogastos.js";
 import TipoIngresos from "./routes/rou_tipoingresos.js";
@@ -96,6 +97,7 @@ app.get("/api/ping", (req, res) => {
     app.use("/api/moneda", moneda);
     app.use("/api/facturas", reservaRoutes);
     app.use("/api/gastos", gastos);
+    app.use("/api/ingresos", ingresos);
     app.use("/api/caja", caja);    
     app.use("/api/tipogastos", TipoGastos);
     app.use("/api/tipoingresos", TipoIngresos);

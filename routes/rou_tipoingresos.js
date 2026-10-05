@@ -63,29 +63,48 @@ router.put("/:id", async (req, res) => {
   }
 });
 
-// Eliminar tipo de ingreso
+// ==========================================
+// ELIMINAR TIPO DE INGRESO
+// ==========================================
 router.delete("/:id", async (req, res) => {
   try {
     const { id } = req.params;
-    // 1. Buscar el tipo de ingreso
+
     const tipo = await TipoIngresos.findById(id);
+
     if (!tipo) {
-      return res.status(404).json({ ok: false, error: "Tipo de ingreso no encontrado" });
+      return res.status(404).json({
+        ok: false,
+        error: "Tipo de ingreso no encontrado"
+      });
     }
-    // 2. Buscar ingresos cuya descripción coincida con la descripción del tipo
-    const ingresos = await Ingresos.find({ descripcion: tipo.descripcion });
-    if (ingresos.length > 0) {
+
+    // Verificar si existen ingresos asociados a este tipo
+    const existeIngreso = await Ingresos.exists({
+      tipoIngreso: id
+    });
+
+    if (existeIngreso) {
       return res.status(400).json({
         ok: false,
         error: "No se puede eliminar este tipo de ingreso porque tiene ingresos asociados"
       });
     }
-    // 3. Eliminar si no tiene ingresos
+
     await TipoIngresos.findByIdAndDelete(id);
-    res.json({ ok: true, mensaje: "Tipo de ingreso eliminado" });
+
+    res.json({
+      ok: true,
+      mensaje: "Tipo de ingreso eliminado"
+    });
+
   } catch (error) {
     console.error("Error eliminando tipo:", error);
-    res.status(500).json({ ok: false, error: "Error eliminando tipo de ingreso" });
+
+    res.status(500).json({
+      ok: false,
+      error: "Error eliminando tipo de ingreso"
+    });
   }
 });
 
