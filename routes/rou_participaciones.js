@@ -3,39 +3,25 @@ import Vendidos from "../models/dbVendidos.js";
 import PagoParticipacion from "../models/dbPagoParticipacion.js";
 import dbGastos from "../models/dbGastos.js";
 import ventas from "../models/dbVentas.js";
-import {FacturaNro, asignarFactura} from "../controllers/con_ventas.js";
+import { FacturaNro, asignarFactura } from "../controllers/con_ventas.js";
 import Moneda from "../models/dbMoneda.js";
+import dbIngresos from "../models/dbIngresos.js";
+import TipoIngreso from "../models/dbTipoIngresos.js";
 
 const router = express.Router();
 
 const SEDES_VALIDAS = ["TIENDITA", "MONASTERIO"];
-
 
 // ======================================================
 // NORMALIZAR FECHA YYYY-MM-DD
 // Evita el problema de retroceder un día en Venezuela
 // ======================================================
 function fechaUTC(fecha) {
-  if (
-    typeof fecha !== "string" ||
-    !/^\d{4}-\d{2}-\d{2}$/.test(fecha)
-  ) {
-    return null;
-  }
+  if (typeof fecha !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(fecha)) return null;
 
-  const [year, month, day] =
-    fecha.split("-").map(Number);
+  const [year, month, day] = fecha.split("-").map(Number);
 
-  return new Date(
-    Date.UTC(
-      year,
-      month - 1,
-      day,
-      0,
-      0,
-      0
-    )
-  );
+  return new Date(Date.UTC(year, month - 1, day, 0, 0, 0));
 }
 
 // ======================================================
@@ -45,12 +31,25 @@ router.get("/ventas-pendientes", async (req, res) => {
   try {
     const { sedePaga, sedeRecibe } = req.query;
 
-    if (!SEDES_VALIDAS.includes(sedePaga) || !SEDES_VALIDAS.includes(sedeRecibe) || sedePaga === sedeRecibe) {
-      return res.status(400).json({ ok: false, mensaje: "Las sedes indicadas no son válidas." });
+    if (
+      !SEDES_VALIDAS.includes(sedePaga) ||
+      !SEDES_VALIDAS.includes(sedeRecibe) ||
+      sedePaga === sedeRecibe
+    ) {
+      return res.status(400).json({
+        ok: false,
+        mensaje: "Las sedes indicadas no son válidas."
+      });
     }
 
-    const pagos = await PagoParticipacion.find({ sedePaga, sedeRecibe }).select("detalleVentas.vendido").lean();
-    const vendidosLiquidados = pagos.flatMap(p => (p.detalleVentas || []).map(d => d.vendido).filter(Boolean));
+    const pagos = await PagoParticipacion
+      .find({ sedePaga, sedeRecibe })
+      .select("detalleVentas.vendido")
+      .lean();
+
+    const vendidosLiquidados = pagos.flatMap(p =>
+      (p.detalleVentas || []).map(d => d.vendido).filter(Boolean)
+    );
 
     const pendientes = await Vendidos.find({
       sede: sedePaga,
@@ -61,10 +60,10 @@ router.get("/ventas-pendientes", async (req, res) => {
     })
       .populate("productoId", "descripcion codigo")
       .populate("actividadProductiva", "descripcion")
-      .sort({ fecha: 1, factura: 1 })
+      .sort({ createdAt: 1, factura: 1 })
       .lean();
 
-    const ventas = pendientes.map(v => ({
+    const ventasPendientes = pendientes.map(v => ({
       _id: v._id,
       fecha: v.createdAt,
       factura: v.factura,
@@ -78,13 +77,30 @@ router.get("/ventas-pendientes", async (req, res) => {
       montoParticipacion: Number(v.montoParticipacion || 0)
     }));
 
-    const totalPendiente = Math.round((ventas.reduce((suma, v) => suma + v.montoParticipacion, 0) + Number.EPSILON) * 100) / 100;
+    const totalPendiente =
+      Math.round(
+        (ventasPendientes.reduce(
+          (suma, v) => suma + v.montoParticipacion,
+          0
+        ) + Number.EPSILON) * 100
+      ) / 100;
 
-    res.json({ ok: true, sedePaga, sedeRecibe, totalPendiente, cantidad: ventas.length, ventas });
+    res.json({
+      ok: true,
+      sedePaga,
+      sedeRecibe,
+      totalPendiente,
+      cantidad: ventasPendientes.length,
+      ventas: ventasPendientes
+    });
 
   } catch (error) {
     console.error("Error consultando ventas pendientes de liquidar:", error);
-    res.status(500).json({ ok: false, mensaje: "Error consultando las ventas pendientes de liquidar." });
+
+    res.status(500).json({
+      ok: false,
+      mensaje: "Error consultando las ventas pendientes de liquidar."
+    });
   }
 });
 
@@ -92,50 +108,177 @@ router.get("/ventas-pendientes", async (req, res) => {
 // REGISTRAR PAGO / LIQUIDACIÓN DE PARTICIPACIÓN
 // ======================================================
 router.post("/pago", async (req, res) => {
-  let gastoCreado = null, ingresoCreado = null, monedaCreada = null, pagoCreado = null, facturaTiendita = null, contadorIncrementado = false;
+  let gastoCreado = null;
+  let ingresoCreado = null;
+  let monedaCreada = null;
+  let pagoCreado = null;
+  let facturaTiendita = null;
+  let contadorIncrementado = false;
 
   try {
-    const { fecha, sedePaga, sedeRecibe, numeroReciboGasto, numeroReciboIngreso, observacion, usuario, vendidosSeleccionados } = req.body;
+    const {
+      fecha,
+      sedePaga,
+      sedeRecibe,
+      numeroReciboGasto,
+      numeroReciboIngreso,
+      observacion,
+      usuario,
+      vendidosSeleccionados
+    } = req.body;
 
-    if (!fecha || !sedePaga || !sedeRecibe || !numeroReciboGasto) return res.status(400).json({ ok: false, mensaje: "Debe completar fecha, sedes y número de recibo de gastos." });
-    if (!SEDES_VALIDAS.includes(sedePaga) || !SEDES_VALIDAS.includes(sedeRecibe) || sedePaga === sedeRecibe) return res.status(400).json({ ok: false, mensaje: "Las sedes indicadas no son válidas." });
-    if (!Array.isArray(vendidosSeleccionados) || vendidosSeleccionados.length === 0) return res.status(400).json({ ok: false, mensaje: "Debe seleccionar al menos una venta para liquidar." });
-
-    const fechaNormalizada = fechaUTC(fecha);
-    if (!fechaNormalizada) return res.status(400).json({ ok: false, mensaje: "Fecha inválida." });
-
-    const reciboGasto = String(numeroReciboGasto).trim();
-    const reciboIngreso = numeroReciboIngreso ? String(numeroReciboIngreso).trim() : "";
-
-    if (!reciboGasto) return res.status(400).json({ ok: false, mensaje: "El número del recibo de gastos es obligatorio." });
-    if (sedeRecibe === "MONASTERIO" && !reciboIngreso) return res.status(400).json({ ok: false, mensaje: "Debe indicar el número del recibo de ingreso del Monasterio." });
-
-    const gastoExistente = await dbGastos.findOne({ sede: sedePaga, numeroRecibo: reciboGasto });
-    if (gastoExistente) return res.status(400).json({ ok: false, mensaje: `Ya existe el recibo de gastos ${reciboGasto} en ${sedePaga}.` });
-
-    const pagoConReciboGasto = await PagoParticipacion.findOne({ sedePaga, numeroReciboGasto: reciboGasto });
-    if (pagoConReciboGasto) return res.status(400).json({ ok: false, mensaje: "Ese recibo de gastos ya fue utilizado en una liquidación." });
-
-    if (sedeRecibe === "MONASTERIO") {
-      const ingresoExistente = await ventas.findOne({ sede: "MONASTERIO", tipoMovimiento: "OTRO_INGRESO", numeroReciboIngreso: reciboIngreso });
-      if (ingresoExistente) return res.status(400).json({ ok: false, mensaje: `Ya existe el recibo de ingreso ${reciboIngreso} en MONASTERIO.` });
-
-      const pagoConReciboIngreso = await PagoParticipacion.findOne({ sedeRecibe: "MONASTERIO", numeroReciboIngreso: reciboIngreso });
-      if (pagoConReciboIngreso) return res.status(400).json({ ok: false, mensaje: "Ese recibo de ingreso ya fue utilizado en una liquidación." });
+    if (!fecha || !sedePaga || !sedeRecibe || !numeroReciboGasto) {
+      return res.status(400).json({
+        ok: false,
+        mensaje: "Debe completar fecha, sedes y número de recibo de gastos."
+      });
     }
 
-    const idsYaLiquidados = await PagoParticipacion.distinct("detalleVentas.vendido", { "detalleVentas.vendido": { $in: vendidosSeleccionados } });
-    if (idsYaLiquidados.length > 0) return res.status(400).json({ ok: false, mensaje: "Una o más ventas seleccionadas ya fueron liquidadas. Actualice la pantalla e intente nuevamente." });
+    if (
+      !SEDES_VALIDAS.includes(sedePaga) ||
+      !SEDES_VALIDAS.includes(sedeRecibe) ||
+      sedePaga === sedeRecibe
+    ) {
+      return res.status(400).json({
+        ok: false,
+        mensaje: "Las sedes indicadas no son válidas."
+      });
+    }
 
+    if (
+      !Array.isArray(vendidosSeleccionados) ||
+      vendidosSeleccionados.length === 0
+    ) {
+      return res.status(400).json({
+        ok: false,
+        mensaje: "Debe seleccionar al menos una venta para liquidar."
+      });
+    }
+
+    const fechaNormalizada = fechaUTC(fecha);
+
+    if (!fechaNormalizada) {
+      return res.status(400).json({
+        ok: false,
+        mensaje: "Fecha inválida."
+      });
+    }
+
+    const reciboGasto = String(numeroReciboGasto).trim();
+    const reciboIngreso = numeroReciboIngreso
+      ? String(numeroReciboIngreso).trim()
+      : "";
+
+    if (!reciboGasto) {
+      return res.status(400).json({
+        ok: false,
+        mensaje: "El número del recibo de gastos es obligatorio."
+      });
+    }
+
+    if (sedeRecibe === "MONASTERIO" && !reciboIngreso) {
+      return res.status(400).json({
+        ok: false,
+        mensaje: "Debe indicar el número del recibo de ingreso del Monasterio."
+      });
+    }
+
+    // ==================================================
+    // VALIDAR RECIBO DE GASTOS
+    // ==================================================
+    const gastoExistente = await dbGastos.findOne({
+      sede: sedePaga,
+      numeroRecibo: reciboGasto
+    });
+
+    if (gastoExistente) {
+      return res.status(400).json({
+        ok: false,
+        mensaje: `Ya existe el recibo de gastos ${reciboGasto} en ${sedePaga}.`
+      });
+    }
+
+    const pagoConReciboGasto = await PagoParticipacion.findOne({
+      sedePaga,
+      numeroReciboGasto: reciboGasto
+    });
+
+    if (pagoConReciboGasto) {
+      return res.status(400).json({
+        ok: false,
+        mensaje: "Ese recibo de gastos ya fue utilizado en una liquidación."
+      });
+    }
+
+    // ==================================================
+    // VALIDAR RECIBO DE INGRESO DEL MONASTERIO
+    // ==================================================
+    if (sedeRecibe === "MONASTERIO") {
+      const ingresoExistente = await dbIngresos.findOne({
+        sede: "MONASTERIO",
+        numeroReciboIngreso: reciboIngreso
+      });
+
+      if (ingresoExistente) {
+        return res.status(400).json({
+          ok: false,
+          mensaje: `Ya existe el recibo de ingreso ${reciboIngreso} en MONASTERIO.`
+        });
+      }
+
+      const pagoConReciboIngreso = await PagoParticipacion.findOne({
+        sedeRecibe: "MONASTERIO",
+        numeroReciboIngreso: reciboIngreso
+      });
+
+      if (pagoConReciboIngreso) {
+        return res.status(400).json({
+          ok: false,
+          mensaje: "Ese recibo de ingreso ya fue utilizado en una liquidación."
+        });
+      }
+    }
+
+    // ==================================================
+    // VERIFICAR QUE LAS VENTAS NO ESTÉN LIQUIDADAS
+    // ==================================================
+    const idsYaLiquidados = await PagoParticipacion.distinct(
+      "detalleVentas.vendido",
+      {
+        "detalleVentas.vendido": {
+          $in: vendidosSeleccionados
+        }
+      }
+    );
+
+    if (idsYaLiquidados.length > 0) {
+      return res.status(400).json({
+        ok: false,
+        mensaje:
+          "Una o más ventas seleccionadas ya fueron liquidadas. Actualice la pantalla e intente nuevamente."
+      });
+    }
+
+    // ==================================================
+    // OBTENER VENTAS SELECCIONADAS
+    // ==================================================
     const seleccionados = await Vendidos.find({
       _id: { $in: vendidosSeleccionados },
       sede: sedePaga,
       beneficiarioParticipacion: sedeRecibe,
       generaParticipacion: true,
       montoParticipacion: { $gt: 0 }
-    }).populate("productoId", "descripcion codigo").lean();
+    })
+      .populate("productoId", "descripcion codigo")
+      .lean();
 
-    if (seleccionados.length !== vendidosSeleccionados.length) return res.status(400).json({ ok: false, mensaje: "Una o más ventas seleccionadas no corresponden a esta liquidación." });
+    if (seleccionados.length !== vendidosSeleccionados.length) {
+      return res.status(400).json({
+        ok: false,
+        mensaje:
+          "Una o más ventas seleccionadas no corresponden a esta liquidación."
+      });
+    }
 
     const detalleVentas = seleccionados.map(v => ({
       vendido: v._id,
@@ -149,51 +292,141 @@ router.post("/pago", async (req, res) => {
       montoParticipacion: Number(v.montoParticipacion || 0)
     }));
 
-    const montoNumero = Math.round((detalleVentas.reduce((suma, v) => suma + v.montoParticipacion, 0) + Number.EPSILON) * 100) / 100;
-    if (montoNumero <= 0) return res.status(400).json({ ok: false, mensaje: "Las ventas seleccionadas no generan participación." });
+    const montoNumero =
+      Math.round(
+        (detalleVentas.reduce(
+          (suma, v) => suma + v.montoParticipacion,
+          0
+        ) + Number.EPSILON) * 100
+      ) / 100;
 
+    if (montoNumero <= 0) {
+      return res.status(400).json({
+        ok: false,
+        mensaje: "Las ventas seleccionadas no generan participación."
+      });
+    }
+
+    // ==================================================
+    // CREAR GASTO EN LA SEDE QUE PAGA
+    // ==================================================
     gastoCreado = await dbGastos.create({
-      fecha: fechaNormalizada, sede: sedePaga, descripcion: "LIQUIDACIÓN DE PARTICIPACIÓN POR VENTAS",
-      clasificacion: "TRANSFERENCIA_PARTICIPACION", actividadProductiva: null, moneda: "D",
-      monto: montoNumero, numeroRecibo: reciboGasto, cajaChica: false, usuario: usuario || "", cierre: "N"
+      fecha: fechaNormalizada,
+      sede: sedePaga,
+      descripcion: "LIQUIDACIÓN DE PARTICIPACIÓN POR VENTAS",
+      clasificacion: "TRANSFERENCIA_PARTICIPACION",
+      actividadProductiva: null,
+      moneda: "D",
+      monto: montoNumero,
+      numeroRecibo: reciboGasto,
+      cajaChica: false,
+      usuario: usuario || "",
+      cierre: "N"
     });
 
-    const horaActual = new Intl.DateTimeFormat("en-US", { timeZone: "America/Caracas", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date());
+    const horaActual = new Intl.DateTimeFormat("en-US", {
+      timeZone: "America/Caracas",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false
+    }).format(new Date());
 
+    // ==================================================
+    // SI RECIBE TIENDITA
+    // Se conserva el funcionamiento que ya fue probado
+    // ==================================================
     if (sedeRecibe === "TIENDITA") {
       facturaTiendita = await FacturaNro("TIENDITA") + 1;
 
       ingresoCreado = await ventas.create({
-        fecha: fechaNormalizada, hora: horaActual, tipoMovimiento: "OTRO_INGRESO", factura: facturaTiendita,
-        cliente: "", subtotal: montoNumero, IVA: 0, total: montoNumero, usuario: usuario || "ADMIN",
-        estado: "CONTADO", numeroReciboIngreso: "", conceptoIngreso: "LIQUIDACIÓN DE PARTICIPACIÓN POR VENTAS",
-        origenIngreso: "PARTICIPACION", sedeOrigenIngreso: sedePaga, sede: "TIENDITA", cierre: "N"
+        fecha: fechaNormalizada,
+        hora: horaActual,
+        tipoMovimiento: "OTRO_INGRESO",
+        factura: facturaTiendita,
+        cliente: "",
+        subtotal: montoNumero,
+        IVA: 0,
+        total: montoNumero,
+        usuario: usuario || "ADMIN",
+        estado: "CONTADO",
+        numeroReciboIngreso: "",
+        conceptoIngreso: "LIQUIDACIÓN DE PARTICIPACIÓN POR VENTAS",
+        origenIngreso: "PARTICIPACION",
+        sedeOrigenIngreso: sedePaga,
+        sede: "TIENDITA",
+        cierre: "N"
       });
-        monedaCreada = await Moneda.create({
-          fecha: fechaNormalizada,
-          sede: "TIENDITA",
-          operacion: "VENTA",
-          factura: facturaTiendita,
-          total: montoNumero,
-          efectivoD: montoNumero
-        });
+
+      monedaCreada = await Moneda.create({
+        fecha: fechaNormalizada,
+        sede: "TIENDITA",
+        operacion: "VENTA",
+        factura: facturaTiendita,
+        total: montoNumero,
+        efectivoD: montoNumero
+      });
+
+    // ==================================================
+    // SI RECIBE MONASTERIO
+    // Crear verdadero INGRESO DEL MONASTERIO
+    // ==================================================
     } else {
-      ingresoCreado = await ventas.create({
-        fecha: fechaNormalizada, hora: horaActual, tipoMovimiento: "OTRO_INGRESO", factura: null,
-        cliente: "", subtotal: montoNumero, IVA: 0, total: montoNumero, usuario: usuario || "ADMIN",
-        estado: "CONTADO", numeroReciboIngreso: reciboIngreso, conceptoIngreso: "LIQUIDACIÓN DE PARTICIPACIÓN POR VENTAS",
-        origenIngreso: "PARTICIPACION", sedeOrigenIngreso: sedePaga, sede: "MONASTERIO", cierre: "N"
+      const tipoParticipacion = await TipoIngreso.findOne({
+        descripcion: "PARTICIPACIÓN DE TIENDITA"
+      });
+
+      if (!tipoParticipacion) {
+        throw new Error(
+          'Debe crear primero el tipo de ingreso "PARTICIPACIÓN DE TIENDITA".'
+        );
+      }
+
+      ingresoCreado = await dbIngresos.create({
+        fecha: fechaNormalizada,
+        sede: "MONASTERIO",
+        numeroReciboIngreso: reciboIngreso,
+        tipoIngreso: tipoParticipacion._id,
+        descripcion: "LIQUIDACIÓN DE PARTICIPACIÓN POR VENTAS",
+        moneda: "D",
+        monto: montoNumero,
+        origen: "PARTICIPACION",
+        pagoParticipacion: null,
+        usuario: usuario || "",
+        cierre: "N"
       });
     }
 
+    // ==================================================
+    // CREAR PAGO DE PARTICIPACIÓN
+    // ==================================================
     pagoCreado = await PagoParticipacion.create({
-      fecha: fechaNormalizada, sedePaga, sedeRecibe, monto: montoNumero, detalleVentas,
-      numeroReciboGasto: reciboGasto, numeroReciboIngreso: sedeRecibe === "MONASTERIO" ? reciboIngreso : "",
-      facturaIngresoTiendita: sedeRecibe === "TIENDITA" ? facturaTiendita : null,
-      gastoGenerado: gastoCreado._id, ingresoGenerado: ingresoCreado._id,
-      observacion: observacion?.trim() || "", usuario: usuario || ""
+      fecha: fechaNormalizada,
+      sedePaga,
+      sedeRecibe,
+      monto: montoNumero,
+      detalleVentas,
+      numeroReciboGasto: reciboGasto,
+      numeroReciboIngreso:
+        sedeRecibe === "MONASTERIO" ? reciboIngreso : "",
+      facturaIngresoTiendita:
+        sedeRecibe === "TIENDITA" ? facturaTiendita : null,
+      gastoGenerado: gastoCreado._id,
+      ingresoGenerado: ingresoCreado._id,
+      observacion: observacion?.trim() || "",
+      usuario: usuario || ""
     });
 
+    // ==================================================
+    // ENLAZAR INGRESO DEL MONASTERIO CON EL PAGO
+    // ==================================================
+    if (sedeRecibe === "MONASTERIO") {
+      ingresoCreado.pagoParticipacion = pagoCreado._id;
+      await ingresoCreado.save();
+    }
+
+    // ==================================================
+    // INCREMENTAR CONTADOR SOLO SI RECIBE TIENDITA
+    // ==================================================
     if (sedeRecibe === "TIENDITA") {
       await asignarFactura("TIENDITA");
       contadorIncrementado = true;
@@ -211,17 +444,45 @@ router.post("/pago", async (req, res) => {
   } catch (error) {
     console.error("Error registrando liquidación:", error);
 
+    // ==================================================
+    // ROLLBACK
+    // ==================================================
     try {
-      if (pagoCreado?._id) await PagoParticipacion.findByIdAndDelete(pagoCreado._id);
-      if (monedaCreada?._id) await Moneda.findByIdAndDelete(monedaCreada._id);
-      if (ingresoCreado?._id) await ventas.findByIdAndDelete(ingresoCreado._id);
-      if (gastoCreado?._id) await dbGastos.findByIdAndDelete(gastoCreado._id);
-      if (contadorIncrementado) console.error("⚠️ Revisar contador de factura TIENDITA: fue incrementado antes de producirse un error.");
+      if (pagoCreado?._id) {
+        await PagoParticipacion.findByIdAndDelete(pagoCreado._id);
+      }
+
+      if (monedaCreada?._id) {
+        await Moneda.findByIdAndDelete(monedaCreada._id);
+      }
+
+      if (ingresoCreado?._id) {
+        if (sedeRecibe === "TIENDITA") {
+          await ventas.findByIdAndDelete(ingresoCreado._id);
+        } else {
+          await dbIngresos.findByIdAndDelete(ingresoCreado._id);
+        }
+      }
+
+      if (gastoCreado?._id) {
+        await dbGastos.findByIdAndDelete(gastoCreado._id);
+      }
+
+      if (contadorIncrementado) {
+        console.error(
+          "⚠️ Revisar contador de factura TIENDITA: fue incrementado antes de producirse un error."
+        );
+      }
+
     } catch (rollbackError) {
       console.error("Error realizando rollback:", rollbackError);
     }
 
-    return res.status(500).json({ ok: false, mensaje: error.message || "Error registrando la liquidación." });
+    return res.status(500).json({
+      ok: false,
+      mensaje:
+        error.message || "Error registrando la liquidación."
+    });
   }
 });
 
@@ -230,63 +491,40 @@ router.post("/pago", async (req, res) => {
 // ======================================================
 router.get("/estado-cuenta", async (req, res) => {
   try {
-
-    // --------------------------------------------------
-    // 1. PARTICIPACIONES GENERADAS POR LAS VENTAS
-    // --------------------------------------------------
     const vendidos = await Vendidos.find({
       generaParticipacion: true,
       montoParticipacion: { $gt: 0 },
-      beneficiarioParticipacion: {
-        $in: SEDES_VALIDAS
-      }
+      beneficiarioParticipacion: { $in: SEDES_VALIDAS }
     });
 
     let monasterioDebeTiendita = 0;
     let tienditaDebeMonasterio = 0;
 
     for (const vendido of vendidos) {
+      const monto = Number(vendido.montoParticipacion || 0);
 
-      const monto =
-        Number(
-          vendido.montoParticipacion || 0
-        );
-
-      // MONASTERIO vendió y el beneficiario
-      // es TIENDITA
       if (
         vendido.sede === "MONASTERIO" &&
-        vendido.beneficiarioParticipacion ===
-          "TIENDITA"
+        vendido.beneficiarioParticipacion === "TIENDITA"
       ) {
         monasterioDebeTiendita += monto;
       }
 
-      // TIENDITA vendió y el beneficiario
-      // es MONASTERIO
       if (
         vendido.sede === "TIENDITA" &&
-        vendido.beneficiarioParticipacion ===
-          "MONASTERIO"
+        vendido.beneficiarioParticipacion === "MONASTERIO"
       ) {
         tienditaDebeMonasterio += monto;
       }
     }
 
-
-    // --------------------------------------------------
-    // 2. PAGOS REALIZADOS
-    // --------------------------------------------------
-    const pagos =
-      await PagoParticipacion.find({});
+    const pagos = await PagoParticipacion.find({});
 
     let pagadoMonasterioATiendita = 0;
     let pagadoTienditaAMonasterio = 0;
 
     for (const pago of pagos) {
-
-      const monto =
-        Number(pago.monto || 0);
+      const monto = Number(pago.monto || 0);
 
       if (
         pago.sedePaga === "MONASTERIO" &&
@@ -303,24 +541,12 @@ router.get("/estado-cuenta", async (req, res) => {
       }
     }
 
-
-    // --------------------------------------------------
-    // 3. SALDOS BRUTOS
-    // --------------------------------------------------
     const pendienteMonasterioATiendita =
-      monasterioDebeTiendita -
-      pagadoMonasterioATiendita;
+      monasterioDebeTiendita - pagadoMonasterioATiendita;
 
     const pendienteTienditaAMonasterio =
-      tienditaDebeMonasterio -
-      pagadoTienditaAMonasterio;
+      tienditaDebeMonasterio - pagadoTienditaAMonasterio;
 
-
-    // --------------------------------------------------
-    // 4. SALDO NETO ENTRE LAS DOS SEDES
-    // Positivo = MONASTERIO debe a TIENDITA
-    // Negativo = TIENDITA debe a MONASTERIO
-    // --------------------------------------------------
     const saldoNeto =
       pendienteMonasterioATiendita -
       pendienteTienditaAMonasterio;
@@ -338,69 +564,50 @@ router.get("/estado-cuenta", async (req, res) => {
       acreedor = "MONASTERIO";
     }
 
-
-    // --------------------------------------------------
-    // 5. RESPUESTA
-    // --------------------------------------------------
     return res.json({
       ok: true,
 
       generado: {
         monasterioATiendita:
           Math.round(
-            (monasterioDebeTiendita +
-              Number.EPSILON) *
-              100
+            (monasterioDebeTiendita + Number.EPSILON) * 100
           ) / 100,
 
         tienditaAMonasterio:
           Math.round(
-            (tienditaDebeMonasterio +
-              Number.EPSILON) *
-              100
+            (tienditaDebeMonasterio + Number.EPSILON) * 100
           ) / 100
       },
 
       pagado: {
         monasterioATiendita:
           Math.round(
-            (pagadoMonasterioATiendita +
-              Number.EPSILON) *
-              100
+            (pagadoMonasterioATiendita + Number.EPSILON) * 100
           ) / 100,
 
         tienditaAMonasterio:
           Math.round(
-            (pagadoTienditaAMonasterio +
-              Number.EPSILON) *
-              100
+            (pagadoTienditaAMonasterio + Number.EPSILON) * 100
           ) / 100
       },
 
       pendiente: {
         monasterioATiendita:
           Math.round(
-            (pendienteMonasterioATiendita +
-              Number.EPSILON) *
-              100
+            (pendienteMonasterioATiendita + Number.EPSILON) * 100
           ) / 100,
 
         tienditaAMonasterio:
           Math.round(
-            (pendienteTienditaAMonasterio +
-              Number.EPSILON) *
-              100
+            (pendienteTienditaAMonasterio + Number.EPSILON) * 100
           ) / 100
       },
 
       saldoNeto: {
         monto:
           Math.round(
-            (Math.abs(saldoNeto) +
-              Number.EPSILON) *
-              100
+            (Math.abs(saldoNeto) + Number.EPSILON) * 100
           ) / 100,
-
         deudor,
         acreedor
       }
@@ -414,26 +621,22 @@ router.get("/estado-cuenta", async (req, res) => {
 
     return res.status(500).json({
       ok: false,
-      mensaje:
-        "Error calculando estado de cuenta."
+      mensaje: "Error calculando estado de cuenta."
     });
   }
 });
-
 
 // ======================================================
 // HISTORIAL DE PAGOS
 // ======================================================
 router.get("/pagos", async (req, res) => {
   try {
-
-    const pagos =
-      await PagoParticipacion
-        .find({})
-        .sort({
-          fecha: -1,
-          createdAt: -1
-        });
+    const pagos = await PagoParticipacion
+      .find({})
+      .sort({
+        fecha: -1,
+        createdAt: -1
+      });
 
     return res.json({
       ok: true,
@@ -448,11 +651,9 @@ router.get("/pagos", async (req, res) => {
 
     return res.status(500).json({
       ok: false,
-      mensaje:
-        "Error consultando pagos de participación."
+      mensaje: "Error consultando pagos de participación."
     });
   }
 });
-
 
 export default router;
