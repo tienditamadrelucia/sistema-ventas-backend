@@ -29,6 +29,7 @@ import repsalidas from "./routes/rou_salidas.js";
 import repinventa from "./routes/rou_inventario.js";
 import resumenventas from "./routes/rou_ventas.js";
 import cierreMes from "./routes/rou_cierreMes.js";
+import actividadProductivaRoutes from "./routes/rou_actividadProductiva.js";
 import path from "path";
 import { fileURLToPath } from "url";
 
