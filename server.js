@@ -23,6 +23,7 @@ import vendidos from "./routes/rou_vendidos.js";
 import gastos from "./routes/rou_gastos.js";
 import caja from "./routes/rou_caja.js";
 import TipoGastos from "./routes/rou_tipogastos.js";
+import TipoIngresos from "./routes/rou_tipoingresos.js";
 import adminRoutes from "./routes/rou_integra.js";
 import repentradas from "./routes/entradas.js";
 import repsalidas from "./routes/rou_salidas.js";
@@ -97,6 +98,7 @@ app.get("/api/ping", (req, res) => {
     app.use("/api/gastos", gastos);
     app.use("/api/caja", caja);    
     app.use("/api/tipogastos", TipoGastos);
+    app.use("/api/tipoingresos", TipoIngresos);
     app.use("/admin", adminRoutes);
     app.use("/api", cierreMes);
     app.use("/api/actividad-productiva", actividadProductivaRoutes);
