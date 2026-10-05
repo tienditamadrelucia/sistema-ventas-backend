@@ -3,26 +3,72 @@ import Tasas from "../models/dbTasas.js";
 
 const router = express.Router();
 
-// Función para normalizar fecha a UTC 00:00:00
-function normalizarUTC(fecha = new Date()) {
+// ======================================================
+// NORMALIZAR FECHA
+// Las fechas YYYY-MM-DD se conservan exactamente.
+// Para "hoy", se toma el día actual de Venezuela.
+// ======================================================
+function normalizarUTC(fecha = null) {
 
-  const partes = new Intl.DateTimeFormat("en-US", {
-    timeZone: "America/Caracas",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit"
-  }).formatToParts(new Date(fecha));
+  // ----------------------------------------------------
+  // 1. Si viene del frontend como YYYY-MM-DD,
+  // NO convertir primero con new Date(),
+  // porque eso puede retroceder un día en Venezuela.
+  // ----------------------------------------------------
+  if (
+    typeof fecha === "string" &&
+    /^\d{4}-\d{2}-\d{2}$/.test(fecha)
+  ) {
+    const [year, month, day] =
+      fecha.split("-").map(Number);
+
+    return new Date(
+      Date.UTC(
+        year,
+        month - 1,
+        day,
+        0,
+        0,
+        0
+      )
+    );
+  }
+
+  // ----------------------------------------------------
+  // 2. Si necesitamos obtener "hoy",
+  // tomamos expresamente la fecha de Venezuela.
+  // ----------------------------------------------------
+  const fechaBase =
+    fecha instanceof Date
+      ? fecha
+      : new Date();
+
+  const partes = new Intl.DateTimeFormat(
+    "en-US",
+    {
+      timeZone: "America/Caracas",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit"
+    }
+  ).formatToParts(fechaBase);
 
   const year = Number(
-    partes.find((p) => p.type === "year").value
+    partes.find(
+      (p) => p.type === "year"
+    ).value
   );
 
   const month = Number(
-    partes.find((p) => p.type === "month").value
+    partes.find(
+      (p) => p.type === "month"
+    ).value
   );
 
   const day = Number(
-    partes.find((p) => p.type === "day").value
+    partes.find(
+      (p) => p.type === "day"
+    ).value
   );
 
   return new Date(
