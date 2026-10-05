@@ -116,116 +116,55 @@ const VentaSchema = new mongoose.Schema(
 // =====================================================
 // VALIDACIONES SEGÚN EL TIPO DE MOVIMIENTO
 // =====================================================
-VentaSchema.pre("validate", function (next) {
-
-  // ==================================================
-  // 1. VENTA NORMAL
-  // ==================================================
+VentaSchema.pre("validate", function () {
+  // VENTA NORMAL
   if (this.tipoMovimiento === "VENTA") {
-
-    if (
-      this.factura === null ||
-      this.factura === undefined
-    ) {
-      return next(
-        new Error(
-          "La factura es obligatoria para una venta."
-        )
-      );
+    if (this.factura === null || this.factura === undefined) {
+      throw new Error("La factura es obligatoria para una venta.");
     }
 
     if (!this.cliente) {
-      return next(
-        new Error(
-          "El cliente es obligatorio para una venta."
-        )
-      );
+      throw new Error("El cliente es obligatorio para una venta.");
     }
 
-    // Una venta normal no debe tener
-    // información de otro ingreso
     this.numeroReciboIngreso = "";
     this.conceptoIngreso = "";
     this.origenIngreso = "NINGUNO";
     this.sedeOrigenIngreso = "NINGUNA";
   }
 
-
-  // ==================================================
-  // 2. OTRO INGRESO
-  // ==================================================
+  // OTRO INGRESO
   if (this.tipoMovimiento === "OTRO_INGRESO") {
-
     if (!this.conceptoIngreso) {
-      return next(
-        new Error(
-          "El concepto del ingreso es obligatorio."
-        )
-      );
+      throw new Error("El concepto del ingreso es obligatorio.");
     }
 
     const esParticipacionTiendita =
       this.sede === "TIENDITA" &&
       this.origenIngreso === "PARTICIPACION";
 
-
-    // ================================================
-    // TIENDITA RECIBE PARTICIPACIÓN
-    // Se documenta mediante FACTURA
-    // ================================================
+    // TIENDITA recibe participación mediante FACTURA
     if (esParticipacionTiendita) {
-
-      if (
-        this.factura === null ||
-        this.factura === undefined
-      ) {
-        return next(
-          new Error(
-            "La factura es obligatoria para una participación recibida por Tiendita."
-          )
-        );
+      if (this.factura === null || this.factura === undefined) {
+        throw new Error("La factura es obligatoria para una participación recibida por Tiendita.");
       }
 
-      // Tiendita no utiliza recibo de ingreso
       this.numeroReciboIngreso = "";
-    }
-
-
-    // ================================================
-    // MONASTERIO RECIBE PARTICIPACIÓN
-    // Se documenta mediante RECIBO DE INGRESO
-    // ================================================
-    else {
-
+    } else {
+      // MONASTERIO recibe mediante RECIBO DE INGRESO
       if (!this.numeroReciboIngreso) {
-        return next(
-          new Error(
-            "El número del recibo de ingreso es obligatorio."
-          )
-        );
+        throw new Error("El número del recibo de ingreso es obligatorio.");
       }
 
-      // El Monasterio no genera factura
-      // por esta liquidación
       this.factura = null;
     }
 
-
-    // Un ingreso por participación no es
-    // una venta a crédito de un cliente
     this.cliente = "";
     this.subtotal = this.total;
     this.IVA = 0;
     this.estado = "CONTADO";
   }
-
-
-  // ==================================================
-  // TERMINAR VALIDACIÓN
-  // ==================================================
-  next();
 });
-
 
 export default mongoose.model(
   "ventas",
