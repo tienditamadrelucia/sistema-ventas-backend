@@ -28,6 +28,12 @@ const IngresoSchema = new mongoose.Schema({
     trim: true
   },
 
+  moneda: {
+  type: String,
+  enum: ["D", "P", "Bs"],
+  required: true
+  },
+
   monto: {
     type: Number,
     required: true,
