@@ -103,44 +103,24 @@ const PagoParticipacionSchema = new mongoose.Schema(
 // =====================================================
 // VALIDACIONES
 // =====================================================
-PagoParticipacionSchema.pre("validate", function (next) {
-
+PagoParticipacionSchema.pre("validate", function () {
   if (this.sedePaga === this.sedeRecibe) {
-    return next(
-      new Error(
-        "La sede que paga y la sede que recibe no pueden ser la misma."
-      )
-    );
+    throw new Error("La sede que paga y la sede que recibe no pueden ser la misma.");
   }
 
   if (!this.numeroReciboGasto?.trim()) {
-    return next(
-      new Error(
-        "El número del recibo de gastos es obligatorio."
-      )
-    );
+    throw new Error("El número del recibo de gastos es obligatorio.");
   }
 
-  // Si recibe MONASTERIO:
-  // debe existir recibo de ingreso.
-  if (
-    this.sedeRecibe === "MONASTERIO" &&
-    !this.numeroReciboIngreso?.trim()
-  ) {
-    return next(
-      new Error(
-        "El número del recibo de ingreso del Monasterio es obligatorio."
-      )
-    );
+  // Si recibe MONASTERIO debe existir recibo de ingreso
+  if (this.sedeRecibe === "MONASTERIO" && !this.numeroReciboIngreso?.trim()) {
+    throw new Error("El número del recibo de ingreso del Monasterio es obligatorio.");
   }
 
-  // Si recibe TIENDITA:
-  // no existe recibo de ingreso.
+  // Si recibe TIENDITA no existe recibo de ingreso
   if (this.sedeRecibe === "TIENDITA") {
     this.numeroReciboIngreso = "";
   }
-
-  next();
 });
 
 
