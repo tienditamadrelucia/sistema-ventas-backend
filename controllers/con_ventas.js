@@ -128,10 +128,25 @@ export const crearVenta = async (req, res) => {
       tipoMovimiento
     };
 
-    // OTRO INGRESO no utiliza factura
-    if (tipoMovimiento === "OTRO_INGRESO") {
-      datos.factura = null;
-    }
+    // =====================================================
+// OTRO INGRESO
+// =====================================================
+// Normalmente no utiliza factura.
+//
+// EXCEPCIÓN:
+// Si TIENDITA recibe una liquidación de participación,
+// ese ingreso sí se documenta con factura.
+// =====================================================
+if (tipoMovimiento === "OTRO_INGRESO") {
+
+  const esParticipacionTiendita =
+    sede === "TIENDITA" &&
+    req.body.origenIngreso === "PARTICIPACION";
+
+  if (!esParticipacionTiendita) {
+    datos.factura = null;
+  }
+}
 
     // ---------------------------------------------
     // 4. GUARDAR
@@ -141,29 +156,42 @@ export const crearVenta = async (req, res) => {
     const guardada = await venta.save();
 
     // ---------------------------------------------
-    // 5. INCREMENTAR CONTADOR
-    // SOLO SI ES UNA VENTA REAL
-    // ---------------------------------------------
-    if (tipoMovimiento === "VENTA") {
+// 5. INCREMENTAR CONTADOR
+// ---------------------------------------------
+// Consume número de factura cuando:
+// 1. Es una VENTA normal.
+// 2. Es una liquidación de participación
+//    recibida por TIENDITA.
+// ---------------------------------------------
+const usaFactura =
+  tipoMovimiento === "VENTA" ||
+  (
+    tipoMovimiento === "OTRO_INGRESO" &&
+    sede === "TIENDITA" &&
+    req.body.origenIngreso === "PARTICIPACION" &&
+    guardada.factura !== null
+  );
 
-      const tipoContador =
-        obtenerTipoContador(sede);
+if (usaFactura) {
 
-      await Contador.findOneAndUpdate(
-        {
-          tipo: tipoContador
-        },
-        {
-          $inc: {
-            valor: 1
-          }
-        },
-        {
-          upsert: true,
-          setDefaultsOnInsert: true
-        }
-      );
+  const tipoContador =
+    obtenerTipoContador(sede);
+
+  await Contador.findOneAndUpdate(
+    {
+      tipo: tipoContador
+    },
+    {
+      $inc: {
+        valor: 1
+      }
+    },
+    {
+      upsert: true,
+      setDefaultsOnInsert: true
     }
+  );
+}
 
     // ---------------------------------------------
     // 6. RESPONDER AL FRONTEND
@@ -172,10 +200,7 @@ export const crearVenta = async (req, res) => {
       ok: true,
       idVenta: guardada._id,
 
-      factura:
-        tipoMovimiento === "VENTA"
-          ? guardada.factura
-          : null,
+      factura: guardada.factura ?? null,
 
       numeroReciboIngreso:
         guardada.numeroReciboIngreso || "",

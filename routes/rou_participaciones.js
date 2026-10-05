@@ -3,6 +3,7 @@ import Vendidos from "../models/dbVendidos.js";
 import PagoParticipacion from "../models/dbPagoParticipacion.js";
 import dbGastos from "../models/dbGastos.js";
 import ventas from "../models/dbVentas.js";
+import {FacturaNro, asignarFactura} from "../controllers/con_ventas.js";
 
 const router = express.Router();
 
@@ -38,24 +39,30 @@ function fechaUTC(fecha) {
 
 
 // ======================================================
-// REGISTRAR PAGO / ENTREGA DE PARTICIPACIÓN
+// REGISTRAR PAGO / LIQUIDACIÓN DE PARTICIPACIÓN
 // ======================================================
 router.post("/pago", async (req, res) => {
+
   let gastoCreado = null;
   let ingresoCreado = null;
   let pagoCreado = null;
 
+  let facturaTiendita = null;
+  let contadorIncrementado = false;
+
   try {
+
     const {
       fecha,
       sedePaga,
       sedeRecibe,
       monto,
-      numeroReciboEgreso,
+      numeroReciboGasto,
       numeroReciboIngreso,
       observacion,
       usuario
     } = req.body;
+
 
     // ==================================================
     // 1. VALIDACIONES BÁSICAS
@@ -65,15 +72,15 @@ router.post("/pago", async (req, res) => {
       !sedePaga ||
       !sedeRecibe ||
       !monto ||
-      !numeroReciboEgreso ||
-      !numeroReciboIngreso
+      !numeroReciboGasto
     ) {
       return res.status(400).json({
         ok: false,
         mensaje:
-          "Debe completar fecha, sede que paga, sede que recibe, monto, recibo de egreso y recibo de ingreso."
+          "Debe completar fecha, sede que paga, sede que recibe, monto y número de recibo de gastos."
       });
     }
+
 
     if (
       !SEDES_VALIDAS.includes(sedePaga) ||
@@ -85,6 +92,7 @@ router.post("/pago", async (req, res) => {
       });
     }
 
+
     if (sedePaga === sedeRecibe) {
       return res.status(400).json({
         ok: false,
@@ -93,10 +101,15 @@ router.post("/pago", async (req, res) => {
       });
     }
 
+
+    // ==================================================
+    // 2. VALIDAR MONTO
+    // ==================================================
     const montoNumero =
       Math.round(
         (Number(monto) + Number.EPSILON) * 100
       ) / 100;
+
 
     if (
       !Number.isFinite(montoNumero) ||
@@ -109,8 +122,13 @@ router.post("/pago", async (req, res) => {
       });
     }
 
+
+    // ==================================================
+    // 3. VALIDAR FECHA
+    // ==================================================
     const fechaNormalizada =
       fechaUTC(fecha);
+
 
     if (!fechaNormalizada) {
       return res.status(400).json({
@@ -119,101 +137,131 @@ router.post("/pago", async (req, res) => {
       });
     }
 
-    const reciboEgreso =
-      String(numeroReciboEgreso).trim();
+
+    // ==================================================
+    // 4. DOCUMENTOS
+    // ==================================================
+    const reciboGasto =
+      String(numeroReciboGasto).trim();
+
 
     const reciboIngreso =
-      String(numeroReciboIngreso).trim();
+      numeroReciboIngreso
+        ? String(numeroReciboIngreso).trim()
+        : "";
 
-    if (!reciboEgreso || !reciboIngreso) {
+
+    if (!reciboGasto) {
       return res.status(400).json({
         ok: false,
         mensaje:
-          "Los números de recibo son obligatorios."
+          "El número del recibo de gastos es obligatorio."
+      });
+    }
+
+
+    // Si recibe MONASTERIO:
+    // debe existir recibo de ingreso.
+    if (
+      sedeRecibe === "MONASTERIO" &&
+      !reciboIngreso
+    ) {
+      return res.status(400).json({
+        ok: false,
+        mensaje:
+          "Debe indicar el número del recibo de ingreso del Monasterio."
       });
     }
 
 
     // ==================================================
-    // 2. VERIFICAR RECIBO DE EGRESO
+    // 5. VERIFICAR RECIBO DE GASTOS
     // ==================================================
     const gastoExistente =
       await dbGastos.findOne({
         sede: sedePaga,
-        numeroRecibo: reciboEgreso
+        numeroRecibo: reciboGasto
       });
+
 
     if (gastoExistente) {
       return res.status(400).json({
         ok: false,
         mensaje:
-          `Ya existe el recibo de egreso ${reciboEgreso} en ${sedePaga}.`
+          `Ya existe el recibo de gastos ${reciboGasto} en ${sedePaga}.`
       });
     }
 
 
-    // ==================================================
-    // 3. VERIFICAR RECIBO DE INGRESO
-    // ==================================================
-    const ingresoExistente =
-      await ventas.findOne({
-        sede: sedeRecibe,
-        tipoMovimiento: "OTRO_INGRESO",
-        numeroReciboIngreso: reciboIngreso
-      });
-
-    if (ingresoExistente) {
-      return res.status(400).json({
-        ok: false,
-        mensaje:
-          `Ya existe el recibo de ingreso ${reciboIngreso} en ${sedeRecibe}.`
-      });
-    }
-
-
-    // ==================================================
-    // 4. VERIFICAR QUE LA LIQUIDACIÓN NO ESTÉ REPETIDA
-    // ==================================================
-    const pagoConReciboEgreso =
+    const pagoConReciboGasto =
       await PagoParticipacion.findOne({
         sedePaga,
-        numeroReciboEgreso: reciboEgreso
+        numeroReciboGasto: reciboGasto
       });
 
-    if (pagoConReciboEgreso) {
+
+    if (pagoConReciboGasto) {
       return res.status(400).json({
         ok: false,
         mensaje:
-          "Ese recibo de egreso ya fue utilizado en una liquidación de participación."
-      });
-    }
-
-    const pagoConReciboIngreso =
-      await PagoParticipacion.findOne({
-        sedeRecibe,
-        numeroReciboIngreso: reciboIngreso
-      });
-
-    if (pagoConReciboIngreso) {
-      return res.status(400).json({
-        ok: false,
-        mensaje:
-          "Ese recibo de ingreso ya fue utilizado en una liquidación de participación."
+          "Ese recibo de gastos ya fue utilizado en una liquidación de participación."
       });
     }
 
 
     // ==================================================
-    // 5. CALCULAR PARTICIPACIÓN GENERADA
+    // 6. SI RECIBE MONASTERIO:
+    // VERIFICAR RECIBO DE INGRESO
     // ==================================================
-    const vendidos = await Vendidos.find({
-      sede: sedePaga,
-      beneficiarioParticipacion: sedeRecibe,
-      generaParticipacion: true,
-      montoParticipacion: {
-        $gt: 0
+    if (sedeRecibe === "MONASTERIO") {
+
+      const ingresoExistente =
+        await ventas.findOne({
+          sede: "MONASTERIO",
+          tipoMovimiento: "OTRO_INGRESO",
+          numeroReciboIngreso: reciboIngreso
+        });
+
+
+      if (ingresoExistente) {
+        return res.status(400).json({
+          ok: false,
+          mensaje:
+            `Ya existe el recibo de ingreso ${reciboIngreso} en MONASTERIO.`
+        });
       }
-    });
+
+
+      const pagoConReciboIngreso =
+        await PagoParticipacion.findOne({
+          sedeRecibe: "MONASTERIO",
+          numeroReciboIngreso: reciboIngreso
+        });
+
+
+      if (pagoConReciboIngreso) {
+        return res.status(400).json({
+          ok: false,
+          mensaje:
+            "Ese recibo de ingreso ya fue utilizado en una liquidación de participación."
+        });
+      }
+    }
+
+
+    // ==================================================
+    // 7. CALCULAR PARTICIPACIÓN GENERADA
+    // ==================================================
+    const vendidos =
+      await Vendidos.find({
+        sede: sedePaga,
+        beneficiarioParticipacion: sedeRecibe,
+        generaParticipacion: true,
+        montoParticipacion: {
+          $gt: 0
+        }
+      });
+
 
     const totalGenerado =
       vendidos.reduce(
@@ -227,13 +275,14 @@ router.post("/pago", async (req, res) => {
 
 
     // ==================================================
-    // 6. CALCULAR LO YA PAGADO
+    // 8. CALCULAR LO YA PAGADO
     // ==================================================
     const pagosAnteriores =
       await PagoParticipacion.find({
         sedePaga,
         sedeRecibe
       });
+
 
     const totalPagado =
       pagosAnteriores.reduce(
@@ -242,6 +291,7 @@ router.post("/pago", async (req, res) => {
           Number(pago.monto || 0),
         0
       );
+
 
     const pendiente =
       Math.round(
@@ -254,7 +304,7 @@ router.post("/pago", async (req, res) => {
 
 
     // ==================================================
-    // 7. VALIDAR SALDO PENDIENTE
+    // 9. VALIDAR SALDO
     // ==================================================
     if (pendiente <= 0) {
       return res.status(400).json({
@@ -263,6 +313,7 @@ router.post("/pago", async (req, res) => {
           `${sedePaga} no tiene participación pendiente por pagar a ${sedeRecibe}.`
       });
     }
+
 
     if (montoNumero > pendiente) {
       return res.status(400).json({
@@ -274,10 +325,12 @@ router.post("/pago", async (req, res) => {
 
 
     // ==================================================
-    // 8. CREAR EGRESO EN LA SEDE QUE PAGA
+    // 10. CREAR RECIBO DE GASTOS
+    // EN LA SEDE QUE PAGA
     // ==================================================
     gastoCreado =
       await dbGastos.create({
+
         fecha: fechaNormalizada,
 
         sede: sedePaga,
@@ -294,7 +347,7 @@ router.post("/pago", async (req, res) => {
 
         monto: montoNumero,
 
-        numeroRecibo: reciboEgreso,
+        numeroRecibo: reciboGasto,
 
         cajaChica: false,
 
@@ -305,75 +358,165 @@ router.post("/pago", async (req, res) => {
 
 
     // ==================================================
-    // 9. CREAR OTRO INGRESO EN LA SEDE QUE RECIBE
+    // 11. CREAR DOCUMENTO DE LA SEDE QUE RECIBE
     // ==================================================
-    ingresoCreado =
-      await ventas.create({
-        fecha: fechaNormalizada,
 
-        hora: new Intl.DateTimeFormat(
-          "en-US",
-          {
-            timeZone: "America/Caracas",
-            hour: "2-digit",
-            minute: "2-digit",
-            hour12: false
-          }
-        ).format(new Date()),
-
-        tipoMovimiento:
-          "OTRO_INGRESO",
-
-        factura: null,
-
-        cliente: "",
-
-        subtotal: montoNumero,
-
-        IVA: 0,
-
-        total: montoNumero,
-
-        usuario: usuario || "ADMIN",
-
-        estado: "CONTADO",
-
-        numeroReciboIngreso:
-          reciboIngreso,
-
-        conceptoIngreso:
-          "LIQUIDACIÓN DE PARTICIPACIÓN POR VENTAS",
-
-        origenIngreso:
-          "PARTICIPACION",
-
-        sedeOrigenIngreso:
-          sedePaga,
-
-        sede: sedeRecibe,
-
-        cierre: "N"
-      });
+    const horaActual =
+      new Intl.DateTimeFormat(
+        "en-US",
+        {
+          timeZone: "America/Caracas",
+          hour: "2-digit",
+          minute: "2-digit",
+          hour12: false
+        }
+      ).format(new Date());
 
 
     // ==================================================
-    // 10. GUARDAR PAGO DE PARTICIPACIÓN
+    // 11-A. RECIBE TIENDITA
+    // GENERAR FACTURA
+    // ==================================================
+    if (sedeRecibe === "TIENDITA") {
+
+      // Utilizamos el mismo número actual
+      // que utiliza el módulo normal de Ventas.
+      facturaTiendita =
+        await FacturaNro("TIENDITA");
+
+
+      ingresoCreado =
+        await ventas.create({
+
+          fecha: fechaNormalizada,
+
+          hora: horaActual,
+
+          tipoMovimiento:
+            "OTRO_INGRESO",
+
+          factura:
+            facturaTiendita,
+
+          cliente: "",
+
+          subtotal:
+            montoNumero,
+
+          IVA: 0,
+
+          total:
+            montoNumero,
+
+          usuario:
+            usuario || "ADMIN",
+
+          estado:
+            "CONTADO",
+
+          numeroReciboIngreso: "",
+
+          conceptoIngreso:
+            "LIQUIDACIÓN DE PARTICIPACIÓN POR VENTAS",
+
+          origenIngreso:
+            "PARTICIPACION",
+
+          sedeOrigenIngreso:
+            sedePaga,
+
+          sede:
+            "TIENDITA",
+
+          cierre:
+            "N"
+        });
+    }
+
+
+    // ==================================================
+    // 11-B. RECIBE MONASTERIO
+    // GENERAR RECIBO DE INGRESO
+    // ==================================================
+    if (sedeRecibe === "MONASTERIO") {
+
+      ingresoCreado =
+        await ventas.create({
+
+          fecha: fechaNormalizada,
+
+          hora: horaActual,
+
+          tipoMovimiento:
+            "OTRO_INGRESO",
+
+          factura: null,
+
+          cliente: "",
+
+          subtotal:
+            montoNumero,
+
+          IVA: 0,
+
+          total:
+            montoNumero,
+
+          usuario:
+            usuario || "ADMIN",
+
+          estado:
+            "CONTADO",
+
+          numeroReciboIngreso:
+            reciboIngreso,
+
+          conceptoIngreso:
+            "LIQUIDACIÓN DE PARTICIPACIÓN POR VENTAS",
+
+          origenIngreso:
+            "PARTICIPACION",
+
+          sedeOrigenIngreso:
+            sedePaga,
+
+          sede:
+            "MONASTERIO",
+
+          cierre:
+            "N"
+        });
+    }
+
+
+    // ==================================================
+    // 12. GUARDAR LIQUIDACIÓN DE PARTICIPACIÓN
     // ==================================================
     pagoCreado =
       await PagoParticipacion.create({
-        fecha: fechaNormalizada,
+
+        fecha:
+          fechaNormalizada,
 
         sedePaga,
 
         sedeRecibe,
 
-        monto: montoNumero,
+        monto:
+          montoNumero,
 
-        numeroReciboEgreso:
-          reciboEgreso,
+        numeroReciboGasto:
+          reciboGasto,
 
         numeroReciboIngreso:
-          reciboIngreso,
+          sedeRecibe === "MONASTERIO"
+            ? reciboIngreso
+            : "",
+
+        facturaIngresoTiendita:
+          sedeRecibe === "TIENDITA"
+            ? facturaTiendita
+            : null,
 
         gastoGenerado:
           gastoCreado._id,
@@ -390,21 +533,43 @@ router.post("/pago", async (req, res) => {
 
 
     // ==================================================
-    // 11. RESPUESTA
+    // 13. SI RECIBIÓ TIENDITA:
+    // AVANZAR CONTADOR DE FACTURA
+    // ==================================================
+    if (sedeRecibe === "TIENDITA") {
+
+      await asignarFactura(
+        "TIENDITA"
+      );
+
+      contadorIncrementado = true;
+    }
+
+
+    // ==================================================
+    // 14. RESPUESTA
     // ==================================================
     return res.json({
+
       ok: true,
 
       mensaje:
         "Liquidación de participación registrada correctamente.",
 
-      pago: pagoCreado,
+      pago:
+        pagoCreado,
 
-      gasto: gastoCreado,
+      gasto:
+        gastoCreado,
 
-      ingreso: ingresoCreado,
+      ingreso:
+        ingresoCreado,
 
-      saldoAnterior: pendiente,
+      facturaTiendita:
+        facturaTiendita,
+
+      saldoAnterior:
+        pendiente,
 
       saldoPendiente:
         Math.round(
@@ -416,6 +581,7 @@ router.post("/pago", async (req, res) => {
         ) / 100
     });
 
+
   } catch (error) {
 
     console.error(
@@ -426,9 +592,14 @@ router.post("/pago", async (req, res) => {
 
     // ==================================================
     // ROLLBACK MANUAL
-    // Si algo falla, eliminamos lo que alcanzó a crearse.
     // ==================================================
-
+    // Eliminamos los documentos creados si algo
+    // falla antes de completar la operación.
+    //
+    // IMPORTANTE:
+    // El contador se incrementa al final para reducir
+    // el riesgo de dejar números saltados.
+    // ==================================================
     try {
 
       if (pagoCreado?._id) {
@@ -437,11 +608,13 @@ router.post("/pago", async (req, res) => {
         );
       }
 
+
       if (ingresoCreado?._id) {
         await ventas.findByIdAndDelete(
           ingresoCreado._id
         );
       }
+
 
       if (gastoCreado?._id) {
         await dbGastos.findByIdAndDelete(
@@ -449,7 +622,15 @@ router.post("/pago", async (req, res) => {
         );
       }
 
+
+      if (contadorIncrementado) {
+        console.error(
+          "⚠️ La operación falló después de incrementar el contador de factura. Revisar el contador de TIENDITA."
+        );
+      }
+
     } catch (rollbackError) {
+
       console.error(
         "🔴 Error realizando rollback:",
         rollbackError
@@ -458,6 +639,7 @@ router.post("/pago", async (req, res) => {
 
 
     return res.status(500).json({
+
       ok: false,
 
       mensaje:
