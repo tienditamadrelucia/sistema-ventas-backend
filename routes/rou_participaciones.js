@@ -37,615 +37,181 @@ function fechaUTC(fecha) {
   );
 }
 
+// ======================================================
+// VENTAS PENDIENTES DE LIQUIDAR
+// ======================================================
+router.get("/ventas-pendientes", async (req, res) => {
+  try {
+    const { sedePaga, sedeRecibe } = req.query;
+
+    if (!SEDES_VALIDAS.includes(sedePaga) || !SEDES_VALIDAS.includes(sedeRecibe) || sedePaga === sedeRecibe) {
+      return res.status(400).json({ ok: false, mensaje: "Las sedes indicadas no son válidas." });
+    }
+
+    const pagos = await PagoParticipacion.find({ sedePaga, sedeRecibe }).select("detalleVentas.vendido").lean();
+    const vendidosLiquidados = pagos.flatMap(p => (p.detalleVentas || []).map(d => d.vendido).filter(Boolean));
+
+    const pendientes = await Vendidos.find({
+      sede: sedePaga,
+      beneficiarioParticipacion: sedeRecibe,
+      generaParticipacion: true,
+      montoParticipacion: { $gt: 0 },
+      _id: { $nin: vendidosLiquidados }
+    })
+      .populate("productoId", "descripcion codigo")
+      .populate("actividadProductiva", "descripcion")
+      .sort({ fecha: 1, factura: 1 })
+      .lean();
+
+    const ventas = pendientes.map(v => ({
+      _id: v._id,
+      fecha: v.createdAt,
+      factura: v.factura,
+      producto: v.productoId?.descripcion || v.descripcion || "",
+      codigo: v.productoId?.codigo || v.codigo || "",
+      actividad: v.actividadProductiva?.descripcion || "",
+      cantidad: Number(v.cantidad || 0),
+      totalVenta: Number(v.total || 0),
+      tipoParticipacion: v.tipoParticipacion || "NINGUNA",
+      valorParticipacion: Number(v.valorParticipacion || 0),
+      montoParticipacion: Number(v.montoParticipacion || 0)
+    }));
+
+    const totalPendiente = Math.round((ventas.reduce((suma, v) => suma + v.montoParticipacion, 0) + Number.EPSILON) * 100) / 100;
+
+    res.json({ ok: true, sedePaga, sedeRecibe, totalPendiente, cantidad: ventas.length, ventas });
+
+  } catch (error) {
+    console.error("Error consultando ventas pendientes de liquidar:", error);
+    res.status(500).json({ ok: false, mensaje: "Error consultando las ventas pendientes de liquidar." });
+  }
+});
 
 // ======================================================
 // REGISTRAR PAGO / LIQUIDACIÓN DE PARTICIPACIÓN
 // ======================================================
 router.post("/pago", async (req, res) => {
-
-  let gastoCreado = null;
-  let ingresoCreado = null;
-  let pagoCreado = null;
-
-  let facturaTiendita = null;
-  let contadorIncrementado = false;
+  let gastoCreado = null, ingresoCreado = null, pagoCreado = null, facturaTiendita = null, contadorIncrementado = false;
 
   try {
+    const { fecha, sedePaga, sedeRecibe, numeroReciboGasto, numeroReciboIngreso, observacion, usuario, vendidosSeleccionados } = req.body;
 
-    const {
-      fecha,
-      sedePaga,
-      sedeRecibe,
-      monto,
-      numeroReciboGasto,
-      numeroReciboIngreso,
-      observacion,
-      usuario
-    } = req.body;
+    if (!fecha || !sedePaga || !sedeRecibe || !numeroReciboGasto) return res.status(400).json({ ok: false, mensaje: "Debe completar fecha, sedes y número de recibo de gastos." });
+    if (!SEDES_VALIDAS.includes(sedePaga) || !SEDES_VALIDAS.includes(sedeRecibe) || sedePaga === sedeRecibe) return res.status(400).json({ ok: false, mensaje: "Las sedes indicadas no son válidas." });
+    if (!Array.isArray(vendidosSeleccionados) || vendidosSeleccionados.length === 0) return res.status(400).json({ ok: false, mensaje: "Debe seleccionar al menos una venta para liquidar." });
 
+    const fechaNormalizada = fechaUTC(fecha);
+    if (!fechaNormalizada) return res.status(400).json({ ok: false, mensaje: "Fecha inválida." });
 
-    // ==================================================
-    // 1. VALIDACIONES BÁSICAS
-    // ==================================================
-    if (
-      !fecha ||
-      !sedePaga ||
-      !sedeRecibe ||
-      !monto ||
-      !numeroReciboGasto
-    ) {
-      return res.status(400).json({
-        ok: false,
-        mensaje:
-          "Debe completar fecha, sede que paga, sede que recibe, monto y número de recibo de gastos."
-      });
-    }
+    const reciboGasto = String(numeroReciboGasto).trim();
+    const reciboIngreso = numeroReciboIngreso ? String(numeroReciboIngreso).trim() : "";
 
+    if (!reciboGasto) return res.status(400).json({ ok: false, mensaje: "El número del recibo de gastos es obligatorio." });
+    if (sedeRecibe === "MONASTERIO" && !reciboIngreso) return res.status(400).json({ ok: false, mensaje: "Debe indicar el número del recibo de ingreso del Monasterio." });
 
-    if (
-      !SEDES_VALIDAS.includes(sedePaga) ||
-      !SEDES_VALIDAS.includes(sedeRecibe)
-    ) {
-      return res.status(400).json({
-        ok: false,
-        mensaje: "Sede inválida."
-      });
-    }
+    const gastoExistente = await dbGastos.findOne({ sede: sedePaga, numeroRecibo: reciboGasto });
+    if (gastoExistente) return res.status(400).json({ ok: false, mensaje: `Ya existe el recibo de gastos ${reciboGasto} en ${sedePaga}.` });
 
+    const pagoConReciboGasto = await PagoParticipacion.findOne({ sedePaga, numeroReciboGasto: reciboGasto });
+    if (pagoConReciboGasto) return res.status(400).json({ ok: false, mensaje: "Ese recibo de gastos ya fue utilizado en una liquidación." });
 
-    if (sedePaga === sedeRecibe) {
-      return res.status(400).json({
-        ok: false,
-        mensaje:
-          "La sede que paga y la sede que recibe no pueden ser la misma."
-      });
-    }
-
-
-    // ==================================================
-    // 2. VALIDAR MONTO
-    // ==================================================
-    const montoNumero =
-      Math.round(
-        (Number(monto) + Number.EPSILON) * 100
-      ) / 100;
-
-
-    if (
-      !Number.isFinite(montoNumero) ||
-      montoNumero <= 0
-    ) {
-      return res.status(400).json({
-        ok: false,
-        mensaje:
-          "El monto debe ser mayor que cero."
-      });
-    }
-
-
-    // ==================================================
-    // 3. VALIDAR FECHA
-    // ==================================================
-    const fechaNormalizada =
-      fechaUTC(fecha);
-
-
-    if (!fechaNormalizada) {
-      return res.status(400).json({
-        ok: false,
-        mensaje: "Fecha inválida."
-      });
-    }
-
-
-    // ==================================================
-    // 4. DOCUMENTOS
-    // ==================================================
-    const reciboGasto =
-      String(numeroReciboGasto).trim();
-
-
-    const reciboIngreso =
-      numeroReciboIngreso
-        ? String(numeroReciboIngreso).trim()
-        : "";
-
-
-    if (!reciboGasto) {
-      return res.status(400).json({
-        ok: false,
-        mensaje:
-          "El número del recibo de gastos es obligatorio."
-      });
-    }
-
-
-    // Si recibe MONASTERIO:
-    // debe existir recibo de ingreso.
-    if (
-      sedeRecibe === "MONASTERIO" &&
-      !reciboIngreso
-    ) {
-      return res.status(400).json({
-        ok: false,
-        mensaje:
-          "Debe indicar el número del recibo de ingreso del Monasterio."
-      });
-    }
-
-
-    // ==================================================
-    // 5. VERIFICAR RECIBO DE GASTOS
-    // ==================================================
-    const gastoExistente =
-      await dbGastos.findOne({
-        sede: sedePaga,
-        numeroRecibo: reciboGasto
-      });
-
-
-    if (gastoExistente) {
-      return res.status(400).json({
-        ok: false,
-        mensaje:
-          `Ya existe el recibo de gastos ${reciboGasto} en ${sedePaga}.`
-      });
-    }
-
-
-    const pagoConReciboGasto =
-      await PagoParticipacion.findOne({
-        sedePaga,
-        numeroReciboGasto: reciboGasto
-      });
-
-
-    if (pagoConReciboGasto) {
-      return res.status(400).json({
-        ok: false,
-        mensaje:
-          "Ese recibo de gastos ya fue utilizado en una liquidación de participación."
-      });
-    }
-
-
-    // ==================================================
-    // 6. SI RECIBE MONASTERIO:
-    // VERIFICAR RECIBO DE INGRESO
-    // ==================================================
     if (sedeRecibe === "MONASTERIO") {
+      const ingresoExistente = await ventas.findOne({ sede: "MONASTERIO", tipoMovimiento: "OTRO_INGRESO", numeroReciboIngreso: reciboIngreso });
+      if (ingresoExistente) return res.status(400).json({ ok: false, mensaje: `Ya existe el recibo de ingreso ${reciboIngreso} en MONASTERIO.` });
 
-      const ingresoExistente =
-        await ventas.findOne({
-          sede: "MONASTERIO",
-          tipoMovimiento: "OTRO_INGRESO",
-          numeroReciboIngreso: reciboIngreso
-        });
-
-
-      if (ingresoExistente) {
-        return res.status(400).json({
-          ok: false,
-          mensaje:
-            `Ya existe el recibo de ingreso ${reciboIngreso} en MONASTERIO.`
-        });
-      }
-
-
-      const pagoConReciboIngreso =
-        await PagoParticipacion.findOne({
-          sedeRecibe: "MONASTERIO",
-          numeroReciboIngreso: reciboIngreso
-        });
-
-
-      if (pagoConReciboIngreso) {
-        return res.status(400).json({
-          ok: false,
-          mensaje:
-            "Ese recibo de ingreso ya fue utilizado en una liquidación de participación."
-        });
-      }
+      const pagoConReciboIngreso = await PagoParticipacion.findOne({ sedeRecibe: "MONASTERIO", numeroReciboIngreso: reciboIngreso });
+      if (pagoConReciboIngreso) return res.status(400).json({ ok: false, mensaje: "Ese recibo de ingreso ya fue utilizado en una liquidación." });
     }
 
+    const idsYaLiquidados = await PagoParticipacion.distinct("detalleVentas.vendido", { "detalleVentas.vendido": { $in: vendidosSeleccionados } });
+    if (idsYaLiquidados.length > 0) return res.status(400).json({ ok: false, mensaje: "Una o más ventas seleccionadas ya fueron liquidadas. Actualice la pantalla e intente nuevamente." });
 
-    // ==================================================
-    // 7. CALCULAR PARTICIPACIÓN GENERADA
-    // ==================================================
-    const vendidos =
-      await Vendidos.find({
-        sede: sedePaga,
-        beneficiarioParticipacion: sedeRecibe,
-        generaParticipacion: true,
-        montoParticipacion: {
-          $gt: 0
-        }
-      });
+    const seleccionados = await Vendidos.find({
+      _id: { $in: vendidosSeleccionados },
+      sede: sedePaga,
+      beneficiarioParticipacion: sedeRecibe,
+      generaParticipacion: true,
+      montoParticipacion: { $gt: 0 }
+    }).populate("productoId", "descripcion codigo").lean();
 
+    if (seleccionados.length !== vendidosSeleccionados.length) return res.status(400).json({ ok: false, mensaje: "Una o más ventas seleccionadas no corresponden a esta liquidación." });
 
-    const totalGenerado =
-      vendidos.reduce(
-        (acumulado, vendido) =>
-          acumulado +
-          Number(
-            vendido.montoParticipacion || 0
-          ),
-        0
-      );
+    const detalleVentas = seleccionados.map(v => ({
+      vendido: v._id,
+      factura: v.factura,
+      fecha: v.createdAt,
+      producto: v.productoId?.descripcion || "",
+      cantidad: Number(v.cantidad || 0),
+      totalVenta: Number(v.total || 0),
+      tipoParticipacion: v.tipoParticipacion,
+      valorParticipacion: Number(v.valorParticipacion || 0),
+      montoParticipacion: Number(v.montoParticipacion || 0)
+    }));
 
+    const montoNumero = Math.round((detalleVentas.reduce((suma, v) => suma + v.montoParticipacion, 0) + Number.EPSILON) * 100) / 100;
+    if (montoNumero <= 0) return res.status(400).json({ ok: false, mensaje: "Las ventas seleccionadas no generan participación." });
 
-    // ==================================================
-    // 8. CALCULAR LO YA PAGADO
-    // ==================================================
-    const pagosAnteriores =
-      await PagoParticipacion.find({
-        sedePaga,
-        sedeRecibe
-      });
+    gastoCreado = await dbGastos.create({
+      fecha: fechaNormalizada, sede: sedePaga, descripcion: "LIQUIDACIÓN DE PARTICIPACIÓN POR VENTAS",
+      clasificacion: "TRANSFERENCIA_PARTICIPACION", actividadProductiva: null, moneda: "D",
+      monto: montoNumero, numeroRecibo: reciboGasto, cajaChica: false, usuario: usuario || "", cierre: "N"
+    });
 
+    const horaActual = new Intl.DateTimeFormat("en-US", { timeZone: "America/Caracas", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date());
 
-    const totalPagado =
-      pagosAnteriores.reduce(
-        (acumulado, pago) =>
-          acumulado +
-          Number(pago.monto || 0),
-        0
-      );
-
-
-    const pendiente =
-      Math.round(
-        (
-          totalGenerado -
-          totalPagado +
-          Number.EPSILON
-        ) * 100
-      ) / 100;
-
-
-    // ==================================================
-    // 9. VALIDAR SALDO
-    // ==================================================
-    if (pendiente <= 0) {
-      return res.status(400).json({
-        ok: false,
-        mensaje:
-          `${sedePaga} no tiene participación pendiente por pagar a ${sedeRecibe}.`
-      });
-    }
-
-
-    if (montoNumero > pendiente) {
-      return res.status(400).json({
-        ok: false,
-        mensaje:
-          `El pago no puede superar el saldo pendiente de $${pendiente.toFixed(2)}.`
-      });
-    }
-
-
-    // ==================================================
-    // 10. CREAR RECIBO DE GASTOS
-    // EN LA SEDE QUE PAGA
-    // ==================================================
-    gastoCreado =
-      await dbGastos.create({
-
-        fecha: fechaNormalizada,
-
-        sede: sedePaga,
-
-        descripcion:
-          "LIQUIDACIÓN DE PARTICIPACIÓN POR VENTAS",
-
-        clasificacion:
-          "TRANSFERENCIA_PARTICIPACION",
-
-        actividadProductiva: null,
-
-        moneda: "D",
-
-        monto: montoNumero,
-
-        numeroRecibo: reciboGasto,
-
-        cajaChica: false,
-
-        usuario: usuario || "",
-
-        cierre: "N"
-      });
-
-
-    // ==================================================
-    // 11. CREAR DOCUMENTO DE LA SEDE QUE RECIBE
-    // ==================================================
-
-    const horaActual =
-      new Intl.DateTimeFormat(
-        "en-US",
-        {
-          timeZone: "America/Caracas",
-          hour: "2-digit",
-          minute: "2-digit",
-          hour12: false
-        }
-      ).format(new Date());
-
-
-    // ==================================================
-    // 11-A. RECIBE TIENDITA
-    // GENERAR FACTURA
-    // ==================================================
     if (sedeRecibe === "TIENDITA") {
+      facturaTiendita = await FacturaNro("TIENDITA");
 
-      // Utilizamos el mismo número actual
-      // que utiliza el módulo normal de Ventas.
-      facturaTiendita =
-        await FacturaNro("TIENDITA");
-
-
-      ingresoCreado =
-        await ventas.create({
-
-          fecha: fechaNormalizada,
-
-          hora: horaActual,
-
-          tipoMovimiento:
-            "OTRO_INGRESO",
-
-          factura:
-            facturaTiendita,
-
-          cliente: "",
-
-          subtotal:
-            montoNumero,
-
-          IVA: 0,
-
-          total:
-            montoNumero,
-
-          usuario:
-            usuario || "ADMIN",
-
-          estado:
-            "CONTADO",
-
-          numeroReciboIngreso: "",
-
-          conceptoIngreso:
-            "LIQUIDACIÓN DE PARTICIPACIÓN POR VENTAS",
-
-          origenIngreso:
-            "PARTICIPACION",
-
-          sedeOrigenIngreso:
-            sedePaga,
-
-          sede:
-            "TIENDITA",
-
-          cierre:
-            "N"
-        });
-    }
-
-
-    // ==================================================
-    // 11-B. RECIBE MONASTERIO
-    // GENERAR RECIBO DE INGRESO
-    // ==================================================
-    if (sedeRecibe === "MONASTERIO") {
-
-      ingresoCreado =
-        await ventas.create({
-
-          fecha: fechaNormalizada,
-
-          hora: horaActual,
-
-          tipoMovimiento:
-            "OTRO_INGRESO",
-
-          factura: null,
-
-          cliente: "",
-
-          subtotal:
-            montoNumero,
-
-          IVA: 0,
-
-          total:
-            montoNumero,
-
-          usuario:
-            usuario || "ADMIN",
-
-          estado:
-            "CONTADO",
-
-          numeroReciboIngreso:
-            reciboIngreso,
-
-          conceptoIngreso:
-            "LIQUIDACIÓN DE PARTICIPACIÓN POR VENTAS",
-
-          origenIngreso:
-            "PARTICIPACION",
-
-          sedeOrigenIngreso:
-            sedePaga,
-
-          sede:
-            "MONASTERIO",
-
-          cierre:
-            "N"
-        });
-    }
-
-
-    // ==================================================
-    // 12. GUARDAR LIQUIDACIÓN DE PARTICIPACIÓN
-    // ==================================================
-    pagoCreado =
-      await PagoParticipacion.create({
-
-        fecha:
-          fechaNormalizada,
-
-        sedePaga,
-
-        sedeRecibe,
-
-        monto:
-          montoNumero,
-
-        numeroReciboGasto:
-          reciboGasto,
-
-        numeroReciboIngreso:
-          sedeRecibe === "MONASTERIO"
-            ? reciboIngreso
-            : "",
-
-        facturaIngresoTiendita:
-          sedeRecibe === "TIENDITA"
-            ? facturaTiendita
-            : null,
-
-        gastoGenerado:
-          gastoCreado._id,
-
-        ingresoGenerado:
-          ingresoCreado._id,
-
-        observacion:
-          observacion?.trim() || "",
-
-        usuario:
-          usuario || ""
+      ingresoCreado = await ventas.create({
+        fecha: fechaNormalizada, hora: horaActual, tipoMovimiento: "OTRO_INGRESO", factura: facturaTiendita,
+        cliente: "", subtotal: montoNumero, IVA: 0, total: montoNumero, usuario: usuario || "ADMIN",
+        estado: "CONTADO", numeroReciboIngreso: "", conceptoIngreso: "LIQUIDACIÓN DE PARTICIPACIÓN POR VENTAS",
+        origenIngreso: "PARTICIPACION", sedeOrigenIngreso: sedePaga, sede: "TIENDITA", cierre: "N"
       });
+    } else {
+      ingresoCreado = await ventas.create({
+        fecha: fechaNormalizada, hora: horaActual, tipoMovimiento: "OTRO_INGRESO", factura: null,
+        cliente: "", subtotal: montoNumero, IVA: 0, total: montoNumero, usuario: usuario || "ADMIN",
+        estado: "CONTADO", numeroReciboIngreso: reciboIngreso, conceptoIngreso: "LIQUIDACIÓN DE PARTICIPACIÓN POR VENTAS",
+        origenIngreso: "PARTICIPACION", sedeOrigenIngreso: sedePaga, sede: "MONASTERIO", cierre: "N"
+      });
+    }
 
+    pagoCreado = await PagoParticipacion.create({
+      fecha: fechaNormalizada, sedePaga, sedeRecibe, monto: montoNumero, detalleVentas,
+      numeroReciboGasto: reciboGasto, numeroReciboIngreso: sedeRecibe === "MONASTERIO" ? reciboIngreso : "",
+      facturaIngresoTiendita: sedeRecibe === "TIENDITA" ? facturaTiendita : null,
+      gastoGenerado: gastoCreado._id, ingresoGenerado: ingresoCreado._id,
+      observacion: observacion?.trim() || "", usuario: usuario || ""
+    });
 
-    // ==================================================
-    // 13. SI RECIBIÓ TIENDITA:
-    // AVANZAR CONTADOR DE FACTURA
-    // ==================================================
     if (sedeRecibe === "TIENDITA") {
-
-      await asignarFactura(
-        "TIENDITA"
-      );
-
+      await asignarFactura("TIENDITA");
       contadorIncrementado = true;
     }
 
-
-    // ==================================================
-    // 14. RESPUESTA
-    // ==================================================
     return res.json({
-
       ok: true,
-
-      mensaje:
-        "Liquidación de participación registrada correctamente.",
-
-      pago:
-        pagoCreado,
-
-      gasto:
-        gastoCreado,
-
-      ingreso:
-        ingresoCreado,
-
-      facturaTiendita:
-        facturaTiendita,
-
-      saldoAnterior:
-        pendiente,
-
-      saldoPendiente:
-        Math.round(
-          (
-            pendiente -
-            montoNumero +
-            Number.EPSILON
-          ) * 100
-        ) / 100
+      mensaje: "Liquidación registrada correctamente.",
+      pago: pagoCreado,
+      facturaTiendita,
+      cantidadVentas: detalleVentas.length,
+      monto: montoNumero
     });
-
 
   } catch (error) {
+    console.error("Error registrando liquidación:", error);
 
-    console.error(
-      "Error registrando pago de participación:",
-      error
-    );
-
-
-    // ==================================================
-    // ROLLBACK MANUAL
-    // ==================================================
-    // Eliminamos los documentos creados si algo
-    // falla antes de completar la operación.
-    //
-    // IMPORTANTE:
-    // El contador se incrementa al final para reducir
-    // el riesgo de dejar números saltados.
-    // ==================================================
     try {
-
-      if (pagoCreado?._id) {
-        await PagoParticipacion.findByIdAndDelete(
-          pagoCreado._id
-        );
-      }
-
-
-      if (ingresoCreado?._id) {
-        await ventas.findByIdAndDelete(
-          ingresoCreado._id
-        );
-      }
-
-
-      if (gastoCreado?._id) {
-        await dbGastos.findByIdAndDelete(
-          gastoCreado._id
-        );
-      }
-
-
-      if (contadorIncrementado) {
-        console.error(
-          "⚠️ La operación falló después de incrementar el contador de factura. Revisar el contador de TIENDITA."
-        );
-      }
-
+      if (pagoCreado?._id) await PagoParticipacion.findByIdAndDelete(pagoCreado._id);
+      if (ingresoCreado?._id) await ventas.findByIdAndDelete(ingresoCreado._id);
+      if (gastoCreado?._id) await dbGastos.findByIdAndDelete(gastoCreado._id);
+      if (contadorIncrementado) console.error("⚠️ Revisar contador de factura TIENDITA: fue incrementado antes de producirse un error.");
     } catch (rollbackError) {
-
-      console.error(
-        "🔴 Error realizando rollback:",
-        rollbackError
-      );
+      console.error("Error realizando rollback:", rollbackError);
     }
 
-
-    return res.status(500).json({
-
-      ok: false,
-
-      mensaje:
-        error.message ||
-        "Error registrando la liquidación de participación."
-    });
+    return res.status(500).json({ ok: false, mensaje: error.message || "Error registrando la liquidación." });
   }
 });
 
