@@ -57,7 +57,9 @@ router.get("/", async (req, res) => {
     const sede = req.query.sede || "TIENDITA";
     let productos = await Producto.find(
       filtroPorSede(sede)
-    ).sort({ categoria: 1, codigo: 1 });
+    )
+    .populate("actividadProductiva", "descripcion activa")    
+    .sort({ categoria: 1, codigo: 1 });
     productos = productos.map(p => {
       p = p.toObject();
       if (!p.foto) return p;
@@ -109,7 +111,9 @@ router.get("/por-categoria/:codigo", async (req, res) => {
     const productos = await Producto.find({
       categoria: req.params.codigo,
       ...filtroPorSede(sede)
-    }).sort({ codigo: 1 });
+    })
+    .populate("actividadProductiva", "descripcion activa")
+    .sort({ codigo: 1 });
 
     res.json(productos);
 
@@ -415,7 +419,8 @@ router.put("/ajustar-precios", async (req, res) => {
 
 router.put("/:id", async (req, res) => {
   try {
-    const producto = await Producto.findById(req.params.id);
+    const producto = await Producto.findById(req.params.id)
+      .populate("actividadProductiva", "descripcion activa");
 
     if (!producto) {
       return res.status(404).json({

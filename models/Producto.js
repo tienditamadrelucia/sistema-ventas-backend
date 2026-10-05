@@ -65,7 +65,14 @@ const ProductoSchema = new mongoose.Schema({
   valorParticipacion: {
     type: Number,
     default: 0
-  }
+  },
+
+  actividadProductiva: {
+  type: mongoose.Schema.Types.ObjectId,
+  ref: "ActividadProductiva",
+  default: null
+}
+
 });
 
 export default mongoose.model("Producto", ProductoSchema);
