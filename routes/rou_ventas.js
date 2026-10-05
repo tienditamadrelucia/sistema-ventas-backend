@@ -821,19 +821,28 @@ router.get("/reporte-creditos/:desde/:hasta", async (req, res) => {
 
 router.get("/resumen", async (req, res) => {
   try {
-    const { desde, hasta } = req.query;
+    const { desde, hasta, sede } = req.query;
+
     if (!desde || !hasta) {
       return res.status(400).json({ ok: false, mensaje: "Debe enviar ambas fechas" });
     }
+
+    if (!["TIENDITA", "MONASTERIO"].includes(sede)) {
+      return res.status(400).json({ ok: false, mensaje: "Sede inválida" });
+    }
+
     const inicio = new Date(desde);
     inicio.setHours(0, 0, 0, 0);
+
     const fin = new Date(hasta);
     fin.setHours(23, 59, 59, 999);
+
     const ventas = await Moneda.aggregate([
       {
         $match: {
           fecha: { $gte: inicio, $lte: fin },
-          operacion: "VENTA"
+          operacion: "VENTA",
+          sede
         }
       },
       {
@@ -856,24 +865,21 @@ router.get("/resumen", async (req, res) => {
       },
       { $sort: { "_id.dia": 1 } }
     ]);
-    // Convertir formato
+
     const resumen = ventas.map(v => ({
       fecha: v._id.dia,
       dolares: v.totalDolares,
       bolivares: v.totalBolivares,
       pesos: v.totalPesos
     }));
-    // ⭐ TOTALES GENERALES
+
     const totales = {
       dolares: resumen.reduce((acc, r) => acc + r.dolares, 0),
       bolivares: resumen.reduce((acc, r) => acc + r.bolivares, 0),
       pesos: resumen.reduce((acc, r) => acc + r.pesos, 0)
     };
-    res.json({
-      ok: true,
-      resumen,
-      totales
-    });
+
+    res.json({ ok: true, resumen, totales });
   } catch (error) {
     console.error("Error generando resumen de ventas:", error);
     res.status(500).json({ ok: false, mensaje: "Error generando resumen de ventas" });
