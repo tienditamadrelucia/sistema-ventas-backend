@@ -23,8 +23,9 @@ const dbGastosSchema = new mongoose.Schema({
     enum: [
       "SIN_CLASIFICAR",
       "GASTO_OPERATIVO",
-      "COSTO_PRODUCCION",
-      "SUELDOS_PERSONAL"
+      "COSTO_PRODUCCION",      
+      "SUELDOS_PERSONAL",
+      "TRANSFERENCIA_PARTICIPACION"
     ],
     default: "SIN_CLASIFICAR"
   },

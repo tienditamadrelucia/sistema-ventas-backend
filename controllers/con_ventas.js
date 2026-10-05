@@ -84,12 +84,18 @@ export async function asignarFactura(
 
 
 // =====================================================
-// CREAR VENTA
+// CREAR VENTA / OTRO INGRESO
 // =====================================================
 export const crearVenta = async (req, res) => {
   try {
     const sede = req.body.sede || "TIENDITA";
 
+    const tipoMovimiento =
+      req.body.tipoMovimiento || "VENTA";
+
+    // ---------------------------------------------
+    // 1. VALIDAR SEDE
+    // ---------------------------------------------
     if (
       sede !== "TIENDITA" &&
       sede !== "MONASTERIO"
@@ -101,60 +107,99 @@ export const crearVenta = async (req, res) => {
     }
 
     // ---------------------------------------------
-    // 1. Guardar la venta
+    // 2. VALIDAR TIPO DE MOVIMIENTO
     // ---------------------------------------------
-    const venta = new ventas({
+    if (
+      tipoMovimiento !== "VENTA" &&
+      tipoMovimiento !== "OTRO_INGRESO"
+    ) {
+      return res.status(400).json({
+        ok: false,
+        error: "Tipo de movimiento inválido"
+      });
+    }
+
+    // ---------------------------------------------
+    // 3. PREPARAR DATOS
+    // ---------------------------------------------
+    const datos = {
       ...req.body,
-      sede
-    });
+      sede,
+      tipoMovimiento
+    };
+
+    // OTRO INGRESO no utiliza factura
+    if (tipoMovimiento === "OTRO_INGRESO") {
+      datos.factura = null;
+    }
+
+    // ---------------------------------------------
+    // 4. GUARDAR
+    // ---------------------------------------------
+    const venta = new ventas(datos);
 
     const guardada = await venta.save();
 
     // ---------------------------------------------
-    // 2. Incrementar contador DE ESTA SEDE
+    // 5. INCREMENTAR CONTADOR
+    // SOLO SI ES UNA VENTA REAL
     // ---------------------------------------------
-    const tipoContador =
-      obtenerTipoContador(sede);
+    if (tipoMovimiento === "VENTA") {
 
-    await Contador.findOneAndUpdate(
-      {
-        tipo: tipoContador
-      },
-      {
-        $inc: {
-          valor: 1
+      const tipoContador =
+        obtenerTipoContador(sede);
+
+      await Contador.findOneAndUpdate(
+        {
+          tipo: tipoContador
+        },
+        {
+          $inc: {
+            valor: 1
+          }
+        },
+        {
+          upsert: true,
+          setDefaultsOnInsert: true
         }
-      },
-      {
-        upsert: true,
-        setDefaultsOnInsert: true
-      }
-    );
+      );
+    }
 
     // ---------------------------------------------
-    // 3. Responder al frontend
+    // 6. RESPONDER AL FRONTEND
     // ---------------------------------------------
     return res.json({
       ok: true,
       idVenta: guardada._id,
-      factura: guardada.factura,
+
+      factura:
+        tipoMovimiento === "VENTA"
+          ? guardada.factura
+          : null,
+
+      numeroReciboIngreso:
+        guardada.numeroReciboIngreso || "",
+
+      tipoMovimiento,
       sede
     });
 
   } catch (error) {
     console.error(
-      "Error creando venta:",
+      "Error creando movimiento:",
       error
     );
 
     console.error(
-      "🔴 ERROR EXACTO EN CREAR VENTA:",
+      "🔴 ERROR EXACTO:",
       error.message
     );
 
     return res.status(500).json({
       ok: false,
-      error: "Error al guardar la venta"
+      error:
+        error.message ||
+        "Error al guardar el movimiento"
     });
   }
 };
