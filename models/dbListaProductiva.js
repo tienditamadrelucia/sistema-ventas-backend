@@ -1,6 +1,6 @@
 import mongoose from "mongoose";
 
-const ListaProductivaSchema = new mongoose.Schema(
+const ActividadProductivaSchema = new mongoose.Schema(
   {
     descripcion: {
       type: String,
@@ -21,6 +21,6 @@ const ListaProductivaSchema = new mongoose.Schema(
 );
 
 export default mongoose.model(
-  "ListaProductiva",
-  ListaProductivaSchema
+  "ActividadProductiva",
+  ActividadProductivaSchema
 );
