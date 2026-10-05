@@ -99,14 +99,14 @@ const sedeFinal = sede === "MONASTERIO" ? "MONASTERIO" : "TIENDITA";
 
     // ⭐ PRODUCCIÓN DEL MONASTERIO
     else if (observacion === "PRODUCCIÓN DEL MONASTERIO") {
-      if (!precioVenta || precioVenta <= 0) {
-        return res.status(400).json({ ok: false, error: "Debe ingresar el precio de venta." });
-      }
+      precioCompraFinal = 0;
+      precioVentaFinal = Number(precioVenta || producto.venta || 0);
 
-      precioCompraFinal = precioVenta * 0.50;
-
-      if (precioVenta < precioCompraFinal * 1.30) {
-        return res.status(400).json({ ok: false, error: "El precio de venta no cumple el margen mínimo del 30%." });
+      if (precioVentaFinal <= 0) {
+        return res.status(400).json({
+          ok: false,
+          error: "Debe ingresar el precio de venta."
+        });
       }
     }
 
@@ -116,10 +116,16 @@ const sedeFinal = sede === "MONASTERIO" ? "MONASTERIO" : "TIENDITA";
       precioVentaFinal = null;
     }
 
-    // ⭐ ACTUALIZAR PRODUCTO SI APLICA
-    if (observacion === "COMPRAS" || observacion === "PRODUCCIÓN DEL MONASTERIO") {
-      producto.costo = precioCompraFinal;
-      producto.venta = precioVentaFinal;
+    // ⭐ ACTUALIZAR PRODUCTO SEGÚN EL TIPO DE ENTRADA
+    if (observacion === "COMPRAS") {
+      producto.costo = Number(precioCompraFinal);
+      producto.venta = Number(precioVentaFinal);
+      await producto.save();
+    }
+
+    if (observacion === "PRODUCCIÓN DEL MONASTERIO") {
+      producto.costo = 0;
+      producto.venta = Number(precioVentaFinal);
       await producto.save();
     }
 
@@ -199,14 +205,14 @@ const sedeFinal = sede === "MONASTERIO" ? "MONASTERIO" : "TIENDITA";
 
     // ⭐ PRODUCCIÓN DEL MONASTERIO
     else if (observacion === "PRODUCCIÓN DEL MONASTERIO") {
-      if (!precioVenta || precioVenta <= 0) {
-        return res.status(400).json({ ok: false, error: "Debe ingresar el precio de venta." });
-      }
+      precioCompraFinal = 0;
+      precioVentaFinal = Number(precioVenta || producto.venta || 0);
 
-      precioCompraFinal = precioVenta * 0.50;
-
-      if (precioVenta < precioCompraFinal * 1.30) {
-        return res.status(400).json({ ok: false, error: "El precio de venta no cumple el margen mínimo del 30%." });
+      if (precioVentaFinal <= 0) {
+        return res.status(400).json({
+          ok: false,
+          error: "Debe ingresar el precio de venta."
+        });
       }
     }
 
@@ -216,10 +222,16 @@ const sedeFinal = sede === "MONASTERIO" ? "MONASTERIO" : "TIENDITA";
       precioVentaFinal = null;
     }
 
-    // ⭐ ACTUALIZAR PRODUCTO SI APLICA
-    if (observacion === "COMPRAS" || observacion === "PRODUCCIÓN DEL MONASTERIO") {
-      producto.costo = precioCompraFinal;
-      producto.venta = precioVentaFinal;
+    // ⭐ ACTUALIZAR PRODUCTO SEGÚN EL TIPO DE ENTRADA
+    if (observacion === "COMPRAS") {
+      producto.costo = Number(precioCompraFinal);
+      producto.venta = Number(precioVentaFinal);
+      await producto.save();
+    }
+
+    if (observacion === "PRODUCCIÓN DEL MONASTERIO") {
+      producto.costo = 0;
+      producto.venta = Number(precioVentaFinal);
       await producto.save();
     }
 
