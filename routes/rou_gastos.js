@@ -7,29 +7,39 @@ const CLASIFICACIONES_VALIDAS = [
   "SIN_CLASIFICAR",
   "GASTO_OPERATIVO",
   "COSTO_PRODUCCION",
-  "TRANSFERENCIA_PARTICIPACION", 
+  "TRANSFERENCIA_PARTICIPACION",
   "SUELDOS_PERSONAL"
 ];
+
+// ==========================================
+// FILTRO POR SEDE
+// TIENDITA incluye registros históricos sin sede
+// ==========================================
+const filtroPorSede = (sede) => {
+  if (sede === "MONASTERIO") return { sede: "MONASTERIO" };
+
+  return {
+    $or: [
+      { sede: "TIENDITA" },
+      { sede: { $exists: false } }
+    ]
+  };
+};
 
 // ==========================================
 // NORMALIZAR CLASIFICACIÓN
 // ==========================================
 const prepararClasificacion = (body) => {
-  const clasificacion =
-    body.clasificacion || "SIN_CLASIFICAR";
+  const clasificacion = body.clasificacion || "SIN_CLASIFICAR";
 
   if (!CLASIFICACIONES_VALIDAS.includes(clasificacion)) {
-    return {
-      error: "La clasificación del gasto no es válida."
-    };
+    return { error: "La clasificación del gasto no es válida." };
   }
 
-  // Si es costo de producción, la actividad es obligatoria
   if (clasificacion === "COSTO_PRODUCCION") {
     if (!body.actividadProductiva) {
       return {
-        error:
-          "Debe seleccionar la actividad productiva correspondiente al costo."
+        error: "Debe seleccionar la actividad productiva correspondiente al costo."
       };
     }
 
@@ -39,33 +49,22 @@ const prepararClasificacion = (body) => {
     };
   }
 
-  // Los demás tipos NO llevan actividad productiva
   return {
     clasificacion,
     actividadProductiva: null
   };
 };
 
-
 // ==========================================
 // CREAR GASTO
 // ==========================================
 router.post("/", async (req, res) => {
   try {
-    let {
-      numeroRecibo,
-      sede = "TIENDITA"
-    } = req.body;
+    let { numeroRecibo, sede = "TIENDITA" } = req.body;
 
-    // Normalizar sede
-    sede =
-      sede === "MONASTERIO"
-        ? "MONASTERIO"
-        : "TIENDITA";
+    sede = sede === "MONASTERIO" ? "MONASTERIO" : "TIENDITA";
 
-    // Validar clasificación
-    const datosClasificacion =
-      prepararClasificacion(req.body);
+    const datosClasificacion = prepararClasificacion(req.body);
 
     if (datosClasificacion.error) {
       return res.status(400).json({
@@ -74,16 +73,10 @@ router.post("/", async (req, res) => {
       });
     }
 
-    // Normalizar recibo vacío o 0
-    if (
-      !numeroRecibo ||
-      numeroRecibo === "0" ||
-      numeroRecibo === 0
-    ) {
+    if (!numeroRecibo || numeroRecibo === "0" || numeroRecibo === 0) {
       numeroRecibo = null;
     }
 
-    // Validar recibo duplicado
     if (numeroRecibo) {
       const existe = await dbGastos.findOne({
         numeroRecibo,
@@ -94,34 +87,24 @@ router.post("/", async (req, res) => {
       if (existe) {
         return res.status(400).json({
           ok: false,
-          mensaje:
-            "Ya existe un gasto con ese número de recibo"
+          mensaje: "Ya existe un gasto con ese número de recibo"
         });
       }
     }
 
     const nuevo = new dbGastos({
       ...req.body,
-
       sede,
-
       numeroRecibo: numeroRecibo || null,
-
-      clasificacion:
-        datosClasificacion.clasificacion,
-
-      actividadProductiva:
-        datosClasificacion.actividadProductiva
+      clasificacion: datosClasificacion.clasificacion,
+      actividadProductiva: datosClasificacion.actividadProductiva
     });
 
     await nuevo.save();
 
-    const gastoGuardado =
-      await dbGastos.findById(nuevo._id)
-        .populate(
-          "actividadProductiva",
-          "descripcion activa"
-        );
+    const gastoGuardado = await dbGastos
+      .findById(nuevo._id)
+      .populate("actividadProductiva", "descripcion activa");
 
     res.json({
       ok: true,
@@ -138,23 +121,18 @@ router.post("/", async (req, res) => {
   }
 });
 
-
 // ==========================================
 // LISTAR GASTOS
 // ==========================================
 router.get("/", async (req, res) => {
   try {
-    const sede =
-      req.query.sede === "MONASTERIO"
-        ? "MONASTERIO"
-        : "TIENDITA";
+    const sede = req.query.sede === "MONASTERIO"
+      ? "MONASTERIO"
+      : "TIENDITA";
 
     const lista = await dbGastos
-      .find({ sede })
-      .populate(
-        "actividadProductiva",
-        "descripcion activa"
-      )
+      .find(filtroPorSede(sede))
+      .populate("actividadProductiva", "descripcion activa")
       .sort({ fecha: -1 });
 
     res.json({
@@ -172,7 +150,6 @@ router.get("/", async (req, res) => {
   }
 });
 
-
 // ==========================================
 // REPORTE DE GASTOS POR FECHAS
 // ==========================================
@@ -180,10 +157,9 @@ router.get("/reporte", async (req, res) => {
   try {
     const { desde, hasta } = req.query;
 
-    const sede =
-      req.query.sede === "MONASTERIO"
-        ? "MONASTERIO"
-        : "TIENDITA";
+    const sede = req.query.sede === "MONASTERIO"
+      ? "MONASTERIO"
+      : "TIENDITA";
 
     if (!desde || !hasta) {
       return res.status(400).json({
@@ -193,31 +169,21 @@ router.get("/reporte", async (req, res) => {
     }
 
     const inicio = new Date(desde);
-
     const fin = new Date(hasta);
     fin.setHours(23, 59, 59, 999);
 
     const gastos = await dbGastos
       .find({
-        fecha: {
-          $gte: inicio,
-          $lte: fin
-        },
-        sede
+        fecha: { $gte: inicio, $lte: fin },
+        ...filtroPorSede(sede)
       })
-      .populate(
-        "actividadProductiva",
-        "descripcion activa"
-      )
+      .populate("actividadProductiva", "descripcion activa")
       .sort({ fecha: 1 });
 
     res.json(gastos);
 
   } catch (error) {
-    console.error(
-      "Error generando reporte de gastos:",
-      error
-    );
+    console.error("Error generando reporte de gastos:", error);
 
     res.status(500).json({
       ok: false,
@@ -227,36 +193,27 @@ router.get("/reporte", async (req, res) => {
   }
 });
 
-
 // ==========================================
 // GASTOS DE CAJA CHICA POR DÍA
 // IMPORTANTE: antes de /:id
 // ==========================================
 router.get("/gastos/:dia", async (req, res) => {
   try {
-    const sede =
-      req.query.sede === "MONASTERIO"
-        ? "MONASTERIO"
-        : "TIENDITA";
+    const sede = req.query.sede === "MONASTERIO"
+      ? "MONASTERIO"
+      : "TIENDITA";
 
     const dia = new Date(req.params.dia);
-
     const siguiente = new Date(dia);
     siguiente.setDate(siguiente.getDate() + 1);
 
     const lista = await dbGastos
       .find({
-        fecha: {
-          $gte: dia,
-          $lt: siguiente
-        },
+        fecha: { $gte: dia, $lt: siguiente },
         cajaChica: true,
-        sede
+        ...filtroPorSede(sede)
       })
-      .populate(
-        "actividadProductiva",
-        "descripcion activa"
-      );
+      .populate("actividadProductiva", "descripcion activa");
 
     return res.json({
       ok: true,
@@ -264,10 +221,7 @@ router.get("/gastos/:dia", async (req, res) => {
     });
 
   } catch (error) {
-    console.error(
-      "Error buscando gastos por fecha:",
-      error
-    );
+    console.error("Error buscando gastos por fecha:", error);
 
     return res.status(500).json({
       ok: false,
@@ -276,7 +230,6 @@ router.get("/gastos/:dia", async (req, res) => {
   }
 });
 
-
 // ==========================================
 // OBTENER GASTO POR ID
 // ==========================================
@@ -284,10 +237,7 @@ router.get("/:id", async (req, res) => {
   try {
     const gasto = await dbGastos
       .findById(req.params.id)
-      .populate(
-        "actividadProductiva",
-        "descripcion activa"
-      );
+      .populate("actividadProductiva", "descripcion activa");
 
     if (!gasto) {
       return res.status(404).json({
@@ -311,14 +261,12 @@ router.get("/:id", async (req, res) => {
   }
 });
 
-
 // ==========================================
 // MODIFICAR GASTO
 // ==========================================
 router.put("/:id", async (req, res) => {
   try {
-    const gastoActual =
-      await dbGastos.findById(req.params.id);
+    const gastoActual = await dbGastos.findById(req.params.id);
 
     if (!gastoActual) {
       return res.status(404).json({
@@ -327,15 +275,11 @@ router.put("/:id", async (req, res) => {
       });
     }
 
-    // Conservamos la sede original
-    const sede =
-      gastoActual.sede === "MONASTERIO"
-        ? "MONASTERIO"
-        : "TIENDITA";
+    const sede = gastoActual.sede === "MONASTERIO"
+      ? "MONASTERIO"
+      : "TIENDITA";
 
-    // Validar clasificación
-    const datosClasificacion =
-      prepararClasificacion(req.body);
+    const datosClasificacion = prepararClasificacion(req.body);
 
     if (datosClasificacion.error) {
       return res.status(400).json({
@@ -346,15 +290,10 @@ router.put("/:id", async (req, res) => {
 
     let numeroRecibo = req.body.numeroRecibo;
 
-    if (
-      !numeroRecibo ||
-      numeroRecibo === "0" ||
-      numeroRecibo === 0
-    ) {
+    if (!numeroRecibo || numeroRecibo === "0" || numeroRecibo === 0) {
       numeroRecibo = null;
     }
 
-    // Validar duplicado excluyendo el gasto actual
     if (numeroRecibo) {
       const existe = await dbGastos.findOne({
         _id: { $ne: req.params.id },
@@ -366,37 +305,27 @@ router.put("/:id", async (req, res) => {
       if (existe) {
         return res.status(400).json({
           ok: false,
-          mensaje:
-            "Ya existe un gasto con ese número de recibo"
+          mensaje: "Ya existe un gasto con ese número de recibo"
         });
       }
     }
 
-    const actualizado =
-      await dbGastos.findByIdAndUpdate(
+    const actualizado = await dbGastos
+      .findByIdAndUpdate(
         req.params.id,
         {
           ...req.body,
-
-          // No permitimos cambiar de sede
           sede,
-
           numeroRecibo: numeroRecibo || null,
-
-          clasificacion:
-            datosClasificacion.clasificacion,
-
-          actividadProductiva:
-            datosClasificacion.actividadProductiva
+          clasificacion: datosClasificacion.clasificacion,
+          actividadProductiva: datosClasificacion.actividadProductiva
         },
         {
           new: true,
           runValidators: true
         }
-      ).populate(
-        "actividadProductiva",
-        "descripcion activa"
-      );
+      )
+      .populate("actividadProductiva", "descripcion activa");
 
     res.json({
       ok: true,
@@ -404,10 +333,7 @@ router.put("/:id", async (req, res) => {
     });
 
   } catch (error) {
-    console.error(
-      "Error actualizando gasto:",
-      error
-    );
+    console.error("Error actualizando gasto:", error);
 
     res.status(500).json({
       ok: false,
@@ -416,14 +342,12 @@ router.put("/:id", async (req, res) => {
   }
 });
 
-
 // ==========================================
 // ELIMINAR GASTO
 // ==========================================
 router.delete("/:id", async (req, res) => {
   try {
-    const gasto =
-      await dbGastos.findByIdAndDelete(req.params.id);
+    const gasto = await dbGastos.findByIdAndDelete(req.params.id);
 
     if (!gasto) {
       return res.status(404).json({
