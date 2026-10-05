@@ -8,6 +8,8 @@ import { crearVenta, obtenerVentas, buscarVentaPorNumero } from "../controllers/
 import Tasas from "../models/dbTasas.js";
 import Contador from "../models/Contador.js";
 import Categoria from "../models/Categoria.js"
+import Gastos from "../models/dbGastos.js";
+import ActividadProductiva from "../models/dbListaProductiva.js";
 
 const router = express.Router();
 
@@ -883,6 +885,183 @@ router.get("/resumen", async (req, res) => {
   } catch (error) {
     console.error("Error generando resumen de ventas:", error);
     res.status(500).json({ ok: false, mensaje: "Error generando resumen de ventas" });
+  }
+});
+
+// =====================================================
+// UTILIDAD POR ACTIVIDAD PRODUCTIVA
+// Ventas reales - Costos reales de producción
+// Ambas sedes
+// =====================================================
+router.get("/utilidad-actividad", async (req, res) => {
+  try {
+    const { desde, hasta } = req.query;
+
+    if (!desde || !hasta) {
+      return res.status(400).json({ ok: false, mensaje: "Debe indicar fecha desde y hasta." });
+    }
+
+    const inicio = new Date(`${desde}T00:00:00.000Z`);
+    const fin = new Date(`${hasta}T23:59:59.999Z`);
+
+    // 1. Catálogo de actividades
+    const actividades = await ActividadProductiva.find().sort({ descripcion: 1 });
+
+    // 2. Ventas realizadas en el período
+    // Usamos la fecha de la factura, no createdAt de Vendidos.
+    const ventasPeriodo = await Ventas.find({
+      fecha: { $gte: inicio, $lte: fin }
+    }).select("factura sede fecha estado");
+
+    const clavesVenta = new Set(
+      ventasPeriodo.map(v => `${v.sede || "TIENDITA"}-${v.factura}`)
+    );
+
+    // 3. Líneas vendidas que tienen actividad productiva
+    const vendidos = await Vendidos.find({
+      actividadProductiva: { $ne: null }
+    }).populate("actividadProductiva", "descripcion");
+
+    // 4. Costos de producción del período
+    const gastos = await Gastos.find({
+      fecha: { $gte: inicio, $lte: fin },
+      clasificacion: "COSTO_PRODUCCION",
+      actividadProductiva: { $ne: null }
+    }).populate("actividadProductiva", "descripcion");
+
+    // 5. Preparar todas las actividades
+    const mapa = {};
+
+    for (const actividad of actividades) {
+      mapa[String(actividad._id)] = {
+        actividadId: actividad._id,
+        actividad: actividad.descripcion,
+        ventasTiendita: 0,
+        ventasMonasterio: 0,
+        ventasTotales: 0,
+        costosTiendita: 0,
+        costosMonasterio: 0,
+        costosTotales: 0,
+        utilidad: 0,
+        margen: 0
+      };
+    }
+
+    // 6. Acumular ventas reales
+    for (const vendido of vendidos) {
+      const sede = vendido.sede || "TIENDITA";
+      const claveVenta = `${sede}-${vendido.factura}`;
+
+      // Solo líneas pertenecientes a facturas del período
+      if (!clavesVenta.has(claveVenta)) continue;
+
+      const actividadId = vendido.actividadProductiva?._id
+        ? String(vendido.actividadProductiva._id)
+        : String(vendido.actividadProductiva || "");
+
+      if (!actividadId) continue;
+
+      // Por seguridad, si existe una actividad histórica que ya no está
+      // en el catálogo, también la mostramos.
+      if (!mapa[actividadId]) {
+        mapa[actividadId] = {
+          actividadId,
+          actividad: vendido.actividadProductiva?.descripcion || "ACTIVIDAD NO ENCONTRADA",
+          ventasTiendita: 0,
+          ventasMonasterio: 0,
+          ventasTotales: 0,
+          costosTiendita: 0,
+          costosMonasterio: 0,
+          costosTotales: 0,
+          utilidad: 0,
+          margen: 0
+        };
+      }
+
+      const total = Number(vendido.total || 0);
+
+      if (sede === "MONASTERIO") mapa[actividadId].ventasMonasterio += total;
+      else mapa[actividadId].ventasTiendita += total;
+    }
+
+    // 7. Acumular costos reales
+    for (const gasto of gastos) {
+      const actividadId = gasto.actividadProductiva?._id
+        ? String(gasto.actividadProductiva._id)
+        : String(gasto.actividadProductiva || "");
+
+      if (!actividadId) continue;
+
+      if (!mapa[actividadId]) {
+        mapa[actividadId] = {
+          actividadId,
+          actividad: gasto.actividadProductiva?.descripcion || "ACTIVIDAD NO ENCONTRADA",
+          ventasTiendita: 0,
+          ventasMonasterio: 0,
+          ventasTotales: 0,
+          costosTiendita: 0,
+          costosMonasterio: 0,
+          costosTotales: 0,
+          utilidad: 0,
+          margen: 0
+        };
+      }
+
+      const monto = Number(gasto.monto || 0);
+
+      if (gasto.sede === "MONASTERIO") mapa[actividadId].costosMonasterio += monto;
+      else mapa[actividadId].costosTiendita += monto;
+    }
+
+    // 8. Calcular totales y utilidad
+    const reporte = Object.values(mapa)
+      .map(item => {
+        item.ventasTotales = item.ventasTiendita + item.ventasMonasterio;
+        item.costosTotales = item.costosTiendita + item.costosMonasterio;
+        item.utilidad = item.ventasTotales - item.costosTotales;
+        item.margen = item.ventasTotales > 0
+          ? (item.utilidad / item.ventasTotales) * 100
+          : 0;
+
+        return item;
+      })
+      // No mostramos actividades completamente vacías en el período
+      .filter(item => item.ventasTotales !== 0 || item.costosTotales !== 0)
+      .sort((a, b) => a.actividad.localeCompare(b.actividad, "es"));
+
+    // 9. Totales generales
+    const totales = reporte.reduce((acc, item) => {
+      acc.ventasTiendita += item.ventasTiendita;
+      acc.ventasMonasterio += item.ventasMonasterio;
+      acc.ventasTotales += item.ventasTotales;
+      acc.costosTiendita += item.costosTiendita;
+      acc.costosMonasterio += item.costosMonasterio;
+      acc.costosTotales += item.costosTotales;
+      acc.utilidad += item.utilidad;
+      return acc;
+    }, {
+      ventasTiendita: 0,
+      ventasMonasterio: 0,
+      ventasTotales: 0,
+      costosTiendita: 0,
+      costosMonasterio: 0,
+      costosTotales: 0,
+      utilidad: 0
+    });
+
+    totales.margen = totales.ventasTotales > 0
+      ? (totales.utilidad / totales.ventasTotales) * 100
+      : 0;
+
+    return res.json({ ok: true, desde, hasta, reporte, totales });
+
+  } catch (error) {
+    console.error("ERROR UTILIDAD POR ACTIVIDAD:", error);
+    return res.status(500).json({
+      ok: false,
+      mensaje: "Error generando utilidad por actividad productiva.",
+      detalle: error.message
+    });
   }
 });
 
