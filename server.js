@@ -30,6 +30,7 @@ import repinventa from "./routes/rou_inventario.js";
 import resumenventas from "./routes/rou_ventas.js";
 import cierreMes from "./routes/rou_cierreMes.js";
 import actividadProductivaRoutes from "./routes/rou_actividadProductiva.js";
+import participacionesRoutes from "./routes/rou_participaciones.js";
 import path from "path";
 import { fileURLToPath } from "url";
 
@@ -99,6 +100,7 @@ app.get("/api/ping", (req, res) => {
     app.use("/admin", adminRoutes);
     app.use("/api", cierreMes);
     app.use("/api/actividad-productiva", actividadProductivaRoutes);
+    app.use("/api/participaciones", participacionesRoutes);
     
     // ⭐ 4. MANEJO GLOBAL DE ERRORES
     app.use((err, req, res, next) => {
