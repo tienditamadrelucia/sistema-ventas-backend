@@ -27,6 +27,19 @@ const PagoParticipacionSchema = new mongoose.Schema(
       min: 0.01
     },
 
+    // Ventas incluidas en esta liquidación
+    detalleVentas: [{
+      vendido: { type: mongoose.Schema.Types.ObjectId, ref: "Vendidos", required: true },
+      factura: { type: Number, required: true },
+      fecha: { type: Date, required: true },
+      producto: { type: String, default: "" },
+      cantidad: { type: Number, default: 0 },
+      totalVenta: { type: Number, default: 0 },
+      tipoParticipacion: { type: String, enum: ["PORCENTAJE", "MONTO_FIJO"], required: true },
+      valorParticipacion: { type: Number, default: 0 },
+      montoParticipacion: { type: Number, required: true }
+    }],
+
     // ==========================================
     // DOCUMENTO DE LA SEDE QUE PAGA
     // Ambas sedes utilizan RECIBO DE GASTOS
