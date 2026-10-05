@@ -98,7 +98,7 @@ app.get("/api/ping", (req, res) => {
     app.use("/api/tipogastos", TipoGastos);
     app.use("/admin", adminRoutes);
     app.use("/api", cierreMes);
-    app.use("/api/actividades-productivas", actividadProductivaRoutes);
+    app.use("/api/actividad-productiva", actividadProductivaRoutes);
     
     // ⭐ 4. MANEJO GLOBAL DE ERRORES
     app.use((err, req, res, next) => {
