@@ -3,7 +3,7 @@ import mongoose from "mongoose";
 const VentaSchema = new mongoose.Schema({
   fecha: { type: Date, required: true },
   hora: { type: String, required: true },
-  factura: { type: Number, required: true, unique: true },
+  factura: { type: Number, required: true },
   cliente: { type: String, required: true },
   subtotal: { type: Number, required: true },
   IVA: { type: Number, default: 0 },
@@ -16,12 +16,7 @@ const VentaSchema = new mongoose.Schema({
     enum: ["TIENDITA", "MONASTERIO"],
     default: "TIENDITA"
   },
-
-  estado: {
-    type: String,
-    enum: ["CONTADO", "CREDITO"],
-    required: true
-  },
+  
   cierre: { type: String, default: "N" }
 }, { timestamps: true });
 
