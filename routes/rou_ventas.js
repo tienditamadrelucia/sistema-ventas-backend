@@ -925,7 +925,8 @@ router.get("/utilidad-actividad", async (req, res) => {
           costosMonasterio: 0,
           costosTotales: 0,
           utilidad: 0,
-          margen: 0
+          margen: 0,
+          detalleCostos: []
         };
       }
     };
@@ -1091,11 +1092,36 @@ router.get("/utilidad-actividad", async (req, res) => {
         }
       }
 
-      if (sedeGasto === "MONASTERIO") {
-        mapa[actividadId].costosMonasterio += montoDolares;
-      } else {
-        mapa[actividadId].costosTiendita += montoDolares;
-      }
+      let tasaUsada = 0;
+
+if (gasto.moneda === "P") {
+  const tasa = await buscarTasaDelDia(gasto.fecha, sedeGasto);
+  tasaUsada = Number(tasa?.tasaP || 0);
+}
+
+if (gasto.moneda === "Bs") {
+  const tasa = await buscarTasaDelDia(gasto.fecha, sedeGasto);
+  tasaUsada = Number(tasa?.tasaD || 0);
+}
+
+mapa[actividadId].detalleCostos.push({
+  id: String(gasto._id),
+  fecha: gasto.fecha,
+  sede: sedeGasto,
+  descripcion: gasto.descripcion || "",
+  numeroRecibo: gasto.numeroRecibo || "",
+  clasificacion: gasto.clasificacion || "",
+  moneda: gasto.moneda || "",
+  montoOriginal: monto,
+  tasaUsada,
+  montoDolares: Number(montoDolares.toFixed(2))
+});
+
+if (sedeGasto === "MONASTERIO") {
+  mapa[actividadId].costosMonasterio += montoDolares;
+} else {
+  mapa[actividadId].costosTiendita += montoDolares;
+}
     }
 
     // =====================================================
