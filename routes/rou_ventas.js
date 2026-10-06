@@ -974,26 +974,36 @@ router.get("/utilidad-actividad", async (req, res) => {
           };
 
       const lineas = await Vendidos.find(filtroVendidos)
-        .populate("actividadProductiva", "descripcion");
+  .populate("actividadProductiva", "descripcion")
+  .populate("productoId", "descripcion actividadProductiva");
 
-      for (const linea of lineas) {
-        if (!linea.actividadProductiva) continue;
+for (const linea of lineas) {
+  let actividad = linea.actividadProductiva;
 
-        const actividadId = String(linea.actividadProductiva._id);
-        crearActividad(
-          actividadId,
-          linea.actividadProductiva.descripcion
-        );
+  // Venta antigua: buscar la actividad actual del producto
+  if (!actividad && linea.productoId?.actividadProductiva) {
+    actividad = await ActividadProductiva.findById(
+      linea.productoId.actividadProductiva
+    );
+  }
 
-        const totalVenta = Number(linea.total || 0);
+  if (!actividad) continue;
 
-        if (sedeVenta === "MONASTERIO") {
-          mapa[actividadId].ventasMonasterio += totalVenta;
-        } else {
-          mapa[actividadId].ventasTiendita += totalVenta;
-        }
-      }
-    }
+  const actividadId = String(actividad._id);
+
+  crearActividad(
+    actividadId,
+    actividad.descripcion
+  );
+
+  const totalVenta = Number(linea.total || 0);
+
+  if (sedeVenta === "MONASTERIO") {
+    mapa[actividadId].ventasMonasterio += totalVenta;
+  } else {
+    mapa[actividadId].ventasTiendita += totalVenta;
+  }
+}
 
     // =====================================================
     // 4. COSTOS DE PRODUCCIÓN DEL PERÍODO
