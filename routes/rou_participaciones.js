@@ -627,6 +627,77 @@ router.get("/estado-cuenta", async (req, res) => {
 });
 
 // ======================================================
+// ELIMINAR PAGO DE PARTICIPACIÓN
+// SOLO PARA CORREGIR / ANULAR UNA LIQUIDACIÓN
+// ======================================================
+router.delete("/pago/:id", async (req, res) => {
+  try {
+    const pago = await PagoParticipacion.findById(req.params.id);
+
+    if (!pago) {
+      return res.status(404).json({
+        ok: false,
+        mensaje: "Pago de participación no encontrado."
+      });
+    }
+
+    // 1. Eliminar gasto generado en la sede que pagó
+    if (pago.gastoGenerado) {
+      await dbGastos.findByIdAndDelete(pago.gastoGenerado);
+    } else if (pago.numeroReciboGasto) {
+      await dbGastos.findOneAndDelete({
+        sede: pago.sedePaga,
+        numeroRecibo: pago.numeroReciboGasto,
+        clasificacion: "TRANSFERENCIA_PARTICIPACION"
+      });
+    }
+
+    // 2. Eliminar el ingreso generado
+    if (pago.sedeRecibe === "MONASTERIO") {
+      if (pago.ingresoGenerado) {
+        await dbIngresos.findByIdAndDelete(pago.ingresoGenerado);
+      } else if (pago.numeroReciboIngreso) {
+        await dbIngresos.findOneAndDelete({
+          sede: "MONASTERIO",
+          numeroReciboIngreso: pago.numeroReciboIngreso,
+          origen: "PARTICIPACION"
+        });
+      }
+    }
+
+    // 3. Si recibió TIENDITA, eliminar factura automática y movimiento de moneda
+    if (pago.sedeRecibe === "TIENDITA" && pago.facturaIngresoTiendita) {
+      await Moneda.deleteMany({
+        sede: "TIENDITA",
+        factura: pago.facturaIngresoTiendita
+      });
+
+      await ventas.findOneAndDelete({
+        sede: "TIENDITA",
+        factura: pago.facturaIngresoTiendita,
+        origenIngreso: "PARTICIPACION"
+      });
+    }
+
+    // 4. Eliminar finalmente el pago
+    await PagoParticipacion.findByIdAndDelete(pago._id);
+
+    return res.json({
+      ok: true,
+      mensaje: "Liquidación eliminada correctamente."
+    });
+
+  } catch (error) {
+    console.error("Error eliminando pago de participación:", error);
+
+    return res.status(500).json({
+      ok: false,
+      mensaje: error.message || "Error eliminando la liquidación."
+    });
+  }
+});
+
+// ======================================================
 // HISTORIAL DE PAGOS
 // ======================================================
 router.get("/pagos", async (req, res) => {
