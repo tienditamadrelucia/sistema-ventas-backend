@@ -565,24 +565,28 @@ router.get("/reporte-creditos/:desde/:hasta", async (req, res) => {
 
       const productos = [];
 
-      for (const v of vendidos) {
+for (const v of vendidos) {
+  const prod = await Producto.findById(v.productoId)
+    .populate("actividadProductiva", "descripcion");
 
-        const prod = await Producto.findById(v.productoId);
+  let actividad = v.actividadProductiva
+    ? await ActividadProductiva.findById(v.actividadProductiva)
+    : prod?.actividadProductiva;
 
-        productos.push({
-          codigo: prod ? prod.codigo : "N/A",
-          descripcion: prod
-            ? prod.descripcion
-            : "Producto no encontrado",
-          cantidad: Number(v.cantidad || 0),
-          precioSistema: prod
-            ? Number(prod.venta || 0)
-            : 0,
-          precioVenta: Number(v.precio || 0),
-          dscto: Number(v.dscto || 0),
-          total: Number(v.total || 0)
-        });
-      }
+  productos.push({
+    codigo: prod?.codigo || "N/A",
+    descripcion: prod?.descripcion || "Producto no encontrado",
+    precioSistema: prod?.venta || 0,
+    cantidad: v.cantidad,
+    precioVenta: v.precio,
+    dscto: v.dscto,
+    total: v.total,
+    actividadProductiva: actividad ? {
+      id: String(actividad._id),
+      descripcion: actividad.descripcion
+    } : null
+  });
+}
 
       // ===================================================
       // MOVIMIENTOS DEL CRÉDITO
