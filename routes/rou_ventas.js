@@ -956,52 +956,44 @@ router.get("/utilidad-actividad", async (req, res) => {
     // Esto evita mezclar números de factura iguales entre sedes
     // =====================================================
     for (const venta of todasLasVentas) {
-      const sedeVenta = venta.sede === "MONASTERIO"
-        ? "MONASTERIO"
-        : "TIENDITA";
+  const sedeVenta = venta.sede === "MONASTERIO" ? "MONASTERIO" : "TIENDITA";
 
-      const filtroVendidos = sedeVenta === "MONASTERIO"
-        ? {
-            factura: venta.factura,
-            sede: "MONASTERIO"
-          }
-        : {
-            factura: venta.factura,
-            $or: [
-              { sede: "TIENDITA" },
-              { sede: { $exists: false } }
-            ]
-          };
+  const filtroVendidos = sedeVenta === "MONASTERIO"
+    ? { factura: venta.factura, sede: "MONASTERIO" }
+    : {
+        factura: venta.factura,
+        $or: [
+          { sede: "TIENDITA" },
+          { sede: { $exists: false } }
+        ]
+      };
 
-      const lineas = await Vendidos.find(filtroVendidos)
-  .populate("actividadProductiva", "descripcion")
-  .populate("productoId", "descripcion actividadProductiva");
+  const lineas = await Vendidos.find(filtroVendidos)
+    .populate("actividadProductiva", "descripcion")
+    .populate("productoId", "descripcion actividadProductiva");
 
-for (const linea of lineas) {
-  let actividad = linea.actividadProductiva;
+  for (const linea of lineas) {
+    let actividad = linea.actividadProductiva;
 
-  // Venta antigua: buscar la actividad actual del producto
-  if (!actividad && linea.productoId?.actividadProductiva) {
-    actividad = await ActividadProductiva.findById(
-      linea.productoId.actividadProductiva
-    );
-  }
+    // Ventas antiguas que todavía no guardaban actividadProductiva
+    if (!actividad && linea.productoId?.actividadProductiva) {
+      actividad = await ActividadProductiva.findById(
+        linea.productoId.actividadProductiva
+      );
+    }
 
-  if (!actividad) continue;
+    if (!actividad) continue;
 
-  const actividadId = String(actividad._id);
+    const actividadId = String(actividad._id);
+    crearActividad(actividadId, actividad.descripcion);
 
-  crearActividad(
-    actividadId,
-    actividad.descripcion
-  );
+    const totalVenta = Number(linea.total || 0);
 
-  const totalVenta = Number(linea.total || 0);
-
-  if (sedeVenta === "MONASTERIO") {
-    mapa[actividadId].ventasMonasterio += totalVenta;
-  } else {
-    mapa[actividadId].ventasTiendita += totalVenta;
+    if (sedeVenta === "MONASTERIO") {
+      mapa[actividadId].ventasMonasterio += totalVenta;
+    } else {
+      mapa[actividadId].ventasTiendita += totalVenta;
+    }
   }
 }
 
