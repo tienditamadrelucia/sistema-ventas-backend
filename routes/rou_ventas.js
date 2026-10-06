@@ -837,58 +837,83 @@ router.get("/resumen", async (req, res) => {
       return res.status(400).json({ ok: false, mensaje: "Sede inválida" });
     }
 
-    const inicio = new Date(desde);
-    inicio.setHours(0, 0, 0, 0);
+    const inicio = new Date(`${desde}T00:00:00`);
+    const fin = new Date(`${hasta}T23:59:59.999`);
 
-    const fin = new Date(hasta);
-    fin.setHours(23, 59, 59, 999);
+    const filtroSede = sede === "MONASTERIO"
+      ? { sede: "MONASTERIO" }
+      : { $or: [{ sede: "TIENDITA" }, { sede: { $exists: false } }] };
 
-    const ventas = await Moneda.aggregate([
-      {
-        $match: {
-          fecha: { $gte: inicio, $lte: fin },
-          operacion: "VENTA",
-          sede
-        }
-      },
-      {
-        $group: {
-          _id: {
-            dia: { $dateToString: { format: "%Y-%m-%d", date: "$fecha" } }
-          },
-          totalDolares: { $sum: "$efectivoD" },
-          totalBolivares: {
-            $sum: {
-              $add: ["$efectivoBs", "$transferenciaBs", "$pagomovilBs", "$puntoBs"]
-            }
-          },
-          totalPesos: {
-            $sum: {
-              $add: ["$efectivoP", "$transferenciaP"]
-            }
-          }
-        }
-      },
-      { $sort: { "_id.dia": 1 } }
-    ]);
+    const movimientos = await Moneda.find({
+      fecha: { $gte: inicio, $lte: fin },
+      operacion: { $in: ["VENTA", "VUELTOS"] },
+      ...filtroSede
+    }).sort({ fecha: 1 });
 
-    const resumen = ventas.map(v => ({
-      fecha: v._id.dia,
-      dolares: v.totalDolares,
-      bolivares: v.totalBolivares,
-      pesos: v.totalPesos
-    }));
+    const resumenPorDia = {};
+
+    for (const mov of movimientos) {
+      const fecha = new Intl.DateTimeFormat("en-CA", {
+        timeZone: "America/Caracas",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit"
+      }).format(mov.fecha);
+
+      if (!resumenPorDia[fecha]) {
+        resumenPorDia[fecha] = {
+          fecha,
+          dolares: 0,
+          bolivares: 0,
+          pesos: 0
+        };
+      }
+
+      resumenPorDia[fecha].dolares +=
+        Number(mov.efectivoD || 0) +
+        Number(mov.zelle || 0);
+
+      resumenPorDia[fecha].bolivares +=
+        Number(mov.efectivoBs || 0) +
+        Number(mov.transferenciaBs || 0) +
+        Number(mov.pagomovilBs || 0) +
+        Number(mov.puntoBs || 0);
+
+      resumenPorDia[fecha].pesos +=
+        Number(mov.efectivoP || 0) +
+        Number(mov.transferenciaP || 0);
+    }
+
+    const resumen = Object.values(resumenPorDia)
+      .sort((a, b) => a.fecha.localeCompare(b.fecha))
+      .map(r => ({
+        fecha: r.fecha,
+        dolares: Number(r.dolares.toFixed(2)),
+        bolivares: Number(r.bolivares.toFixed(2)),
+        pesos: Number(r.pesos.toFixed(2))
+      }));
 
     const totales = {
-      dolares: resumen.reduce((acc, r) => acc + r.dolares, 0),
-      bolivares: resumen.reduce((acc, r) => acc + r.bolivares, 0),
-      pesos: resumen.reduce((acc, r) => acc + r.pesos, 0)
+      dolares: Number(resumen.reduce((acc, r) => acc + r.dolares, 0).toFixed(2)),
+      bolivares: Number(resumen.reduce((acc, r) => acc + r.bolivares, 0).toFixed(2)),
+      pesos: Number(resumen.reduce((acc, r) => acc + r.pesos, 0).toFixed(2))
     };
 
-    res.json({ ok: true, resumen, totales });
+    return res.json({
+      ok: true,
+      sede,
+      resumen,
+      totales
+    });
+
   } catch (error) {
     console.error("Error generando resumen de ventas:", error);
-    res.status(500).json({ ok: false, mensaje: "Error generando resumen de ventas" });
+
+    return res.status(500).json({
+      ok: false,
+      mensaje: "Error generando resumen de ventas",
+      detalle: error.message
+    });
   }
 });
 
