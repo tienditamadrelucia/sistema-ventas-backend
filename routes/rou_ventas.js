@@ -1017,28 +1017,33 @@ router.get("/utilidad-actividad", async (req, res) => {
     // 5. FUNCIÓN PARA BUSCAR TASA HISTÓRICA
     // =====================================================
     const buscarTasaDelDia = async (fecha, sede) => {
-      const año = fecha.getFullYear();
-      const mes = fecha.getMonth();
-      const dia = fecha.getDate();
+  const año = fecha.getFullYear();
+  const mes = fecha.getMonth();
+  const dia = fecha.getDate();
 
-      const inicioDia = new Date(año, mes, dia, 0, 0, 0, 0);
-      const finDia = new Date(año, mes, dia, 23, 59, 59, 999);
+  const inicioDia = new Date(año, mes, dia, 0, 0, 0, 0);
+  const finDia = new Date(año, mes, dia, 23, 59, 59, 999);
 
-      let tasa = await Tasas.findOne({
-        fecha: { $gte: inicioDia, $lte: finDia },
-        sede
-      });
+  const filtroSede = sede === "MONASTERIO"
+    ? { sede: "MONASTERIO" }
+    : { $or: [{ sede: "TIENDITA" }, { sede: { $exists: false } }] };
 
-      // Tasas históricas antiguas de Tiendita pueden no tener sede
-      if (!tasa && sede === "TIENDITA") {
-        tasa = await Tasas.findOne({
-          fecha: { $gte: inicioDia, $lte: finDia },
-          sede: { $exists: false }
-        });
-      }
+  // 1. Buscar tasa exacta del día
+  let tasa = await Tasas.findOne({
+    ...filtroSede,
+    fecha: { $gte: inicioDia, $lte: finDia }
+  }).sort({ fecha: -1 });
 
-      return tasa;
-    };
+  // 2. Si ese día no hubo tasa, usar la última anterior
+  if (!tasa) {
+    tasa = await Tasas.findOne({
+      ...filtroSede,
+      fecha: { $lt: inicioDia }
+    }).sort({ fecha: -1 });
+  }
+
+  return tasa;
+};
 
     // =====================================================
     // 6. CONVERTIR COSTOS A DÓLARES Y ACUMULAR
