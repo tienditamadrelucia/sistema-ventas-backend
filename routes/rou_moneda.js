@@ -61,26 +61,33 @@ router.get("/:id", async (req, res) => {
   }
 });
 
-// BUSCAR MOVIMIENTOS POR FACTURA
+// =====================================================
+// BUSCAR MOVIMIENTOS POR FACTURA Y SEDE
+// =====================================================
 router.get("/factura/:numero", async (req, res) => {
   try {
-    const numero = req.params.numero;
+    const { numero } = req.params;
     const sede = req.query.sede || "TIENDITA";
+
+    if (!["TIENDITA", "MONASTERIO"].includes(sede)) {
+      return res.status(400).json({ ok: false, mensaje: "Sede inválida" });
+    }
+
+    const filtroSede = sede === "MONASTERIO"
+      ? { sede: "MONASTERIO" }
+      : { $or: [{ sede: "TIENDITA" }, { sede: { $exists: false } }] };
 
     const lista = await Moneda.find({
       factura: numero,
-      sede: sede
-    });
+      ...filtroSede
+    }).sort({ fecha: 1, createdAt: 1 });
+
+    console.log(`💰 Factura ${numero} - ${sede}: ${lista.length} movimientos encontrados`);
 
     return res.json({ ok: true, lista });
-
   } catch (error) {
     console.error("Error buscando movimientos por factura:", error);
-
-    return res.status(500).json({
-      ok: false,
-      mensaje: "Error en el servidor"
-    });
+    return res.status(500).json({ ok: false, mensaje: "Error en el servidor" });
   }
 });
 
