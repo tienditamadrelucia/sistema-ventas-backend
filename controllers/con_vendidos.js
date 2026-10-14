@@ -164,48 +164,34 @@ export const crearVendido = async (req, res) => {
 // =====================================================
 // OBTENER PRODUCTOS VENDIDOS POR FACTURA
 // =====================================================
-export const obtenerVendidosPorVenta = async (
-  req,
-  res
-) => {
+export const obtenerVendidosPorVenta = async (req, res) => {
   try {
     const { factura } = req.params;
+    const sede = req.query.sede || "TIENDITA";
 
-    const sede =
-      req.query.sede || "TIENDITA";
-
-    if (
-      sede !== "TIENDITA" &&
-      sede !== "MONASTERIO"
-    ) {
-      return res.status(400).json({
-        ok: false,
-        error: "Sede inválida"
-      });
+    if (!["TIENDITA", "MONASTERIO"].includes(sede)) {
+      return res.status(400).json({ ok: false, error: "Sede inválida" });
     }
 
-    const vendido = await Vendidos
-      .find({
-        factura,
-        sede
-      })
+    const filtroSede = sede === "MONASTERIO"
+      ? { sede: "MONASTERIO" }
+      : { $or: [{ sede: "TIENDITA" }, { sede: { $exists: false } }] };
+
+    const vendidos = await Vendidos.find({
+      factura,
+      ...filtroSede
+    })
       .populate("productoId")
-      .populate(
-        "actividadProductiva",
-        "descripcion activa"
-      );
+      .populate("actividadProductiva", "descripcion activa");
 
-    res.json(vendido);
+    console.log(`Factura ${factura} - Sede ${sede}: ${vendidos.length} productos encontrados`);
 
+    return res.json(vendidos);
   } catch (error) {
-    console.error(
-      "Error al obtener vendidos:",
-      error
-    );
-
-    res.status(500).json({
-      error:
-        "Backend dice: Error al obtener vendidos"
+    console.error("Error al obtener vendidos:", error);
+    return res.status(500).json({
+      ok: false,
+      error: "Error al obtener productos vendidos"
     });
   }
 };
