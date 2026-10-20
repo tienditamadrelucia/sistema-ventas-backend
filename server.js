@@ -33,10 +33,13 @@ import resumenventas from "./routes/rou_ventas.js";
 import cierreMes from "./routes/rou_cierreMes.js";
 import actividadProductivaRoutes from "./routes/rou_actividadProductiva.js";
 import participacionesRoutes from "./routes/rou_participaciones.js";
+import session from "express-session";
+import MongoStore from "connect-mongo";
 import path from "path";
 import { fileURLToPath } from "url";
 
 const app = express();
+app.set("trust proxy", 1);
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -72,7 +75,33 @@ app.get("/api/ping", (req, res) => {
 (async () => {
   try {
     await conectarDB();
-    
+
+    // ⭐ SESIONES SEGURAS
+    if (!process.env.SESSION_SECRET) {
+      throw new Error("Falta configurar SESSION_SECRET");
+    }
+
+    app.use(
+      session({
+        name: "sistemaventas.sid",
+        secret: process.env.SESSION_SECRET,
+        resave: false,
+        saveUninitialized: false,
+
+        store: MongoStore.create({
+          mongoUrl: process.env.MONGO_URI,
+          collectionName: "sesiones"
+        }),
+
+        cookie: {
+          httpOnly: true,
+          secure: true,
+          sameSite: "none",
+          maxAge: 8 * 60 * 60 * 1000
+        }
+      })
+    ); 
+
     // ⭐ 3. MONTAR RUTAS SOLO DESPUÉS DE LA DB
     app.use("/api/usuarios", usuarios);
     app.use("/api/categorias", categorias);

@@ -45,7 +45,34 @@ const dbCajaSchema = new mongoose.Schema({
     D: { type: Number, default: 0 },
     P: { type: Number, default: 0 }
   },
-  cierre: { type: String, default: "N" }
+  cierre: { type: String, default: "N" },
+
+  verificado: { type: Boolean, default: false },
+
+verificadoPor: { type: mongoose.Schema.Types.ObjectId, ref: "Usuario", default: null },
+
+fechaVerificacion: { type: Date, default: null },
+
+historialVerificacion: { 
+  type: [
+    {
+      accion: {
+        type: String,
+        enum: ["VERIFICAR", "REABRIR"]
+      },
+      usuario: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Usuario"
+      },
+      fecha: {
+        type: Date,
+        default: Date.now
+      },
+      motivo: String
+    }
+  ],
+  default: []
+}
 
 });
 export default mongoose.model("Caja", dbCajaSchema);

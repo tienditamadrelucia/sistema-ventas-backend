@@ -5,36 +5,79 @@ const router = express.Router();
 
 // Ruta para login
 router.post("/login", async (req, res) => {
-    const { usuario, clave } = req.body;
-    if (!usuario || !clave) {
-        return res.status(400).json({ ok: false, mensaje: "Usuario y clave son requeridos" });
+  const { usuario, clave } = req.body;
+
+  if (!usuario || !clave) {
+    return res.status(400).json({
+      ok: false,
+      mensaje: "Usuario y clave son requeridos"
+    });
+  }
+
+  try {
+    const user = await Usuario.findOne({ usuario });
+
+    if (!user) {
+      return res.status(401).json({
+        ok: false,
+        mensaje: "Usuario o clave incorrectos"
+      });
     }
-    console.log("Datos recibidos:", req.body);
-    try {
-        const user = await Usuario.findOne({ usuario });
-        if (!user) {
-            return res.status(404).json({ ok: false, mensaje: "Usuario no encontrado" });
-        }
-        // Comparación SIN bcrypt (texto plano)
-        if (clave !== user.clave) {
-            return res.status(401).json({ ok: false, mensaje: "Clave incorrecta" });
-        }
-        res.json({
-            ok: true,
-            mensaje: "Login exitoso",
-            usuario: {
-                id: user._id,
-                usuario: user.usuario,
-                rol: user.rol,
-                // Compatibilidad con usuarios antiguos
-                accesoTiendita: user.accesoTiendita !== false,
-                accesoMonasterio: user.accesoMonasterio === true
-            }
+
+    // Compatibilidad con las contraseñas actuales
+    if (clave !== user.clave) {
+      return res.status(401).json({
+        ok: false,
+        mensaje: "Usuario o clave incorrectos"
+      });
+    }
+
+    // Crear una nueva sesión
+    req.session.regenerate((error) => {
+      if (error) {
+        console.error("Error creando sesión:", error);
+
+        return res.status(500).json({
+          ok: false,
+          mensaje: "No se pudo iniciar la sesión"
         });
-    } catch (error) {
-        console.error("Error en la consulta de usuario:", error);
-        res.status(500).json({ ok: false, mensaje: "Error en login", detalle: error.message });
-    }
+      }
+
+      // Guardar la identidad del usuario en la sesión
+      req.session.usuarioId = user._id.toString();
+
+      req.session.save((error) => {
+        if (error) {
+          console.error("Error guardando sesión:", error);
+
+          return res.status(500).json({
+            ok: false,
+            mensaje: "No se pudo guardar la sesión"
+          });
+        }
+
+        return res.json({
+          ok: true,
+          mensaje: "Login exitoso",
+          usuario: {
+            id: user._id,
+            usuario: user.usuario,
+            rol: user.rol,
+            accesoTiendita: user.accesoTiendita !== false,
+            accesoMonasterio: user.accesoMonasterio === true
+          }
+        });
+      });
+    });
+
+  } catch (error) {
+    console.error("Error en el login:", error);
+
+    return res.status(500).json({
+      ok: false,
+      mensaje: "Error al iniciar sesión"
+    });
+  }
 });
 
 
