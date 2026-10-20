@@ -129,7 +129,7 @@ router.get("/debug-file", (req, res) => {
 
 
 // LISTAR
-router.get("/", async (req, res) => {
+router.get("/", soloAdministrador, async (req, res) => {
   try {
     const usuarios = await Usuario.find();
     res.json(usuarios);
@@ -140,7 +140,7 @@ router.get("/", async (req, res) => {
 });
 
 // BUSCAR POR USUARIO
-router.get("/:usuario", async (req, res) => {
+router.get("/:usuario", soloAdministrador, async (req, res) => {
   try {
     const user = await Usuario.findOne({ usuario: req.params.usuario });
     res.json(user);
@@ -150,7 +150,7 @@ router.get("/:usuario", async (req, res) => {
 });
 
 // ACTUALIZAR
-router.put("/:id", async (req, res) => {
+router.put("/:id", soloAdministrador, async (req, res) => {
   try {
     const actualizado = await Usuario.findByIdAndUpdate(
       req.params.id,
@@ -164,7 +164,7 @@ router.put("/:id", async (req, res) => {
 });
 
 // ELIMINAR
-router.delete("/:id", async (req, res) => {
+router.delete("/:id", soloAdministrador, async (req, res) => {
   try {
     await Usuario.findByIdAndDelete(req.params.id);
     res.json({ ok: true });
@@ -174,7 +174,7 @@ router.delete("/:id", async (req, res) => {
 });
 
 // CREAR USUARIO
-router.post("/", async (req, res) => {
+router.post("/", soloAdministrador, async (req, res) => {
   try {
     const { nombre, usuario, clave, rol, accesoTiendita, accesoMonasterio } = req.body;
     if (!nombre || !usuario || !clave || !rol) {
