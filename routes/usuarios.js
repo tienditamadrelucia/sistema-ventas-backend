@@ -167,5 +167,44 @@ router.post("/", async (req, res) => {
   }
 });
 
+// COMPROBAR SESIÓN ACTIVA
+router.get("/sesion/actual", async (req, res) => {
+  try {
+    if (!req.session?.usuarioId) {
+      return res.status(401).json({
+        ok: false,
+        mensaje: "No hay sesión activa"
+      });
+    }
+
+    const user = await Usuario.findById(req.session.usuarioId);
+
+    if (!user) {
+      return res.status(401).json({
+        ok: false,
+        mensaje: "Usuario no encontrado"
+      });
+    }
+
+    return res.json({
+      ok: true,
+      usuario: {
+        id: user._id,
+        usuario: user.usuario,
+        rol: user.rol,
+        accesoTiendita: user.accesoTiendita !== false,
+        accesoMonasterio: user.accesoMonasterio === true
+      }
+    });
+
+  } catch (error) {
+    console.error("Error comprobando sesión:", error);
+
+    return res.status(500).json({
+      ok: false,
+      mensaje: "Error comprobando sesión"
+    });
+  }
+});
 
 export default router;
