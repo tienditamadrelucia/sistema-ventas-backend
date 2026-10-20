@@ -3,6 +3,37 @@ import Usuario from "../models/Usuario.js";
 
 const router = express.Router();
 
+// Verificar que el usuario tenga una sesión activa
+// y que su rol sea ADMINISTRADOR
+async function soloAdministrador(req, res, next) {
+  try {
+    if (!req.session?.usuarioId) {
+      return res.status(401).json({
+        ok: false,
+        mensaje: "Debe iniciar sesión"
+      });
+    }
+
+    const usuario = await Usuario.findById(req.session.usuarioId);
+
+    if (!usuario || usuario.rol !== "ADMINISTRADOR") {
+      return res.status(403).json({
+        ok: false,
+        mensaje: "Acceso permitido solo a administradores"
+      });
+    }
+
+    next();
+  } catch (error) {
+    console.error("Error verificando administrador:", error);
+
+    return res.status(500).json({
+      ok: false,
+      mensaje: "Error verificando permisos"
+    });
+  }
+}
+
 // Ruta para login
 router.post("/login", async (req, res) => {
   const { usuario, clave } = req.body;
