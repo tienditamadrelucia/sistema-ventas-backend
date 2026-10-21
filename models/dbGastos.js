@@ -5,7 +5,7 @@ const dbGastosSchema = new mongoose.Schema({
     type: Date,
     required: true
   },
-
+ 
   sede: {
     type: String,
     enum: ["TIENDITA", "MONASTERIO"],

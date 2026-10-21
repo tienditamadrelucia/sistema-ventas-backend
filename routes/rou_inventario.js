@@ -216,13 +216,6 @@ router.get("/reporte", async (req, res) => {
     const { desde, hasta } = req.query;
     const sede = req.query.sede || "TIENDITA";
 
-    if (!desde || !hasta) {
-      return res.status(400).json({
-        ok: false,
-        mensaje: "Debe enviar ambas fechas"
-      });
-    }
-
     if (!["TIENDITA", "MONASTERIO"].includes(sede)) {
       return res.status(400).json({
         ok: false,
@@ -230,10 +223,39 @@ router.get("/reporte", async (req, res) => {
       });
     }
 
-    const inicio = new Date(desde + "T00:00:00");
-    const fin = new Date(hasta + "T23:59:59");
+    const convertirFecha = (valor) => {
+      if (
+        typeof valor !== "string" ||
+        !/^\d{4}-\d{2}-\d{2}$/.test(valor)
+      ) {
+        return null;
+      }
 
-    // Los registros antiguos sin sede pertenecen a TIENDITA
+      const fecha = new Date(`${valor}T00:00:00.000Z`);
+
+      if (
+        !Number.isFinite(fecha.getTime()) ||
+        fecha.toISOString().slice(0, 10) !== valor
+      ) {
+        return null;
+      }
+
+      return fecha;
+    };
+
+    const inicio = convertirFecha(desde);
+    const ultimoDia = convertirFecha(hasta);
+
+    if (!inicio || !ultimoDia || inicio > ultimoDia) {
+      return res.status(400).json({
+        ok: false,
+        mensaje: "Seleccione un rango de fechas válido"
+      });
+    }
+
+    const finExclusivo = new Date(ultimoDia);
+    finExclusivo.setUTCDate(finExclusivo.getUTCDate() + 1);
+
     const filtroSede =
       sede === "MONASTERIO"
         ? { sede: "MONASTERIO" }
@@ -244,201 +266,115 @@ router.get("/reporte", async (req, res) => {
             ]
           };
 
-    // Productos solamente de esta sede
-    const productos = await Producto.find({
+    const productos = await Producto.find(filtroSede)
+      .sort({ categoria: 1, codigo: 1 })
+      .lean();
+
+    const ids = productos.map((p) => p._id);
+
+    // Las existencias a una fecha incluyen todos los
+    // movimientos anteriores, no solo los del rango.
+    const sumarMovimientos = async (Modelo) => {
+      const filas = await Modelo.aggregate([
+        {
+          $match: {
+            productoId: { $in: ids },
+            fecha: { $lt: finExclusivo },
+            ...filtroSede
+          }
+        },
+        {
+          $group: {
+            _id: "$productoId",
+            cantidad: { $sum: "$cantidad" }
+          }
+        }
+      ]);
+
+      return new Map(
+        filas.map((fila) => [
+          String(fila._id),
+          Number(fila.cantidad)
+        ])
+      );
+    };
+
+    const entradas = await sumarMovimientos(Entrada);
+    const salidas = await sumarMovimientos(Salida);
+
+    // Usamos la fecha de la venta, porque los detalles
+    // vendidos pueden no tener un campo fecha.
+    // Incluye contado y crédito: ambos salen del inventario.
+    const ventas = await Ventas.find({
+      fecha: { $lt: finExclusivo },
+      tipoMovimiento: { $ne: "OTRO_INGRESO" },
       ...filtroSede
-    }).sort({
-      categoria: 1,
-      codigo: 1
-    });
+    })
+      .select("factura")
+      .lean();
 
-    const resultado = [];
+    const facturas = [
+      ...new Set(
+        ventas
+          .map((venta) => venta.factura)
+          .filter(
+            (factura) =>
+              factura !== null &&
+              factura !== undefined
+          )
+      )
+    ];
 
-    for (const p of productos) {
-      const productoId = p._id;
-
-      // =====================================
-      // 1. ENTRADAS DENTRO DEL RANGO
-      // =====================================
-      const entradas = await Entrada.aggregate([
-        {
-          $match: {
-            productoId,
-            fecha: { $gte: inicio, $lte: fin },
-            ...filtroSede
-          }
-        },
-        {
-          $group: {
-            _id: null,
-            total: { $sum: "$cantidad" }
-          }
-        }
-      ]);
-
-      // =====================================
-      // 2. SALIDAS DENTRO DEL RANGO
-      // =====================================
-      const salidas = await Salida.aggregate([
-        {
-          $match: {
-            productoId,
-            fecha: { $gte: inicio, $lte: fin },
-            ...filtroSede
-          }
-        },
-        {
-          $group: {
-            _id: null,
-            total: { $sum: "$cantidad" }
-          }
-        }
-      ]);
-
-      // =====================================
-      // 3. VENTAS DENTRO DEL RANGO
-      // =====================================
-      const vendidosLista = await Vendidos.find({
-        productoId,
-        fecha: { $gte: inicio, $lte: fin },
-        ...filtroSede
-      });
-
-      let totalVendidosValidos = 0;
-
-      for (const v of vendidosLista) {
-        const venta = await Ventas.findOne({
-          factura: v.factura,
+    const vendidosAgrupados = await Vendidos.aggregate([
+      {
+        $match: {
+          productoId: { $in: ids },
+          factura: { $in: facturas },
           ...filtroSede
-        });
-
-        if (!venta) continue;
-
-        if (venta.estado === "CONTADO") {
-          totalVendidosValidos += v.cantidad;
-          continue;
         }
-
-        if (
-          venta.estado === "CREDITO" &&
-          venta.restaUSD <= 0
-        ) {
-          totalVendidosValidos += v.cantidad;
+      },
+      {
+        $group: {
+          _id: "$productoId",
+          cantidad: { $sum: "$cantidad" }
         }
       }
+    ]);
 
-      // =====================================
-      // 4. MOVIMIENTOS POSTERIORES AL RANGO
-      // =====================================
-
-      const entradasPosteriores = await Entrada.aggregate([
-        {
-          $match: {
-            productoId,
-            fecha: { $gt: fin },
-            ...filtroSede
-          }
-        },
-        {
-          $group: {
-            _id: null,
-            total: { $sum: "$cantidad" }
-          }
-        }
-      ]);
-
-      const salidasPosteriores = await Salida.aggregate([
-        {
-          $match: {
-            productoId,
-            fecha: { $gt: fin },
-            ...filtroSede
-          }
-        },
-        {
-          $group: {
-            _id: null,
-            total: { $sum: "$cantidad" }
-          }
-        }
-      ]);
-
-      const ventasPosterioresLista = await Vendidos.find({
-        productoId,
-        fecha: { $gt: fin },
-        ...filtroSede
-      });
-
-      let ventasPosteriores = 0;
-
-      for (const v of ventasPosterioresLista) {
-        const venta = await Ventas.findOne({
-          factura: v.factura,
-          ...filtroSede
-        });
-
-        if (!venta) continue;
-
-        if (venta.estado === "CONTADO") {
-          ventasPosteriores += v.cantidad;
-        }
-
-        if (
-          venta.estado === "CREDITO" &&
-          venta.restaUSD <= 0
-        ) {
-          ventasPosteriores += v.cantidad;
-        }
-      }
-
-      // =====================================
-      // 5. STOCK INICIAL DEL RANGO
-      // =====================================
-
-      const stockInicial =
-        (p.stock || 0)
-        - (entradasPosteriores?.[0]?.total || 0)
-        + (salidasPosteriores?.[0]?.total || 0)
-        + ventasPosteriores;
-
-      const totalEntradas =
-        entradas?.[0]?.total || 0;
-
-      const totalSalidas =
-        salidas?.[0]?.total || 0;
-
-      // =====================================
-      // 6. STOCK REAL DEL RANGO
-      // =====================================
-
-      const stockReal =
-        stockInicial
-        + totalEntradas
-        - totalSalidas
-        - totalVendidosValidos;
-
-      if (stockReal > 0) {
-        resultado.push({
-          _id: p._id,
-          codigo: p.codigo,
-          categoria: p.categoria,
-          descripcion: p.descripcion,
-          costo: p.costo,
-          venta: p.venta,
-          stockReal
-        });
-      }
-    }
-
-    res.json(resultado);
-
-  } catch (error) {
-    console.error(
-      "Error generando reporte de inventario:",
-      error
+    const vendidos = new Map(
+      vendidosAgrupados.map((fila) => [
+        String(fila._id),
+        Number(fila.cantidad)
+      ])
     );
 
-    res.status(500).json({
+    const resultado = productos.map((producto) => {
+      const id = String(producto._id);
+
+      const stockReal =
+        Number(producto.stock || 0) +
+        (entradas.get(id) || 0) -
+        (salidas.get(id) || 0) -
+        (vendidos.get(id) || 0);
+
+      return {
+        _id: producto._id,
+        codigo: producto.codigo,
+        categoria: producto.categoria,
+        descripcion: producto.descripcion,
+        costo: producto.costo,
+        venta: producto.venta,
+        stockReal: Math.round(stockReal * 1000) / 1000
+      };
+    });
+
+    // Incluye existencias cero y negativas para que
+    // las diferencias no queden ocultas.
+    return res.json(resultado);
+  } catch (error) {
+    console.error("Error generando reporte de inventario:", error);
+
+    return res.status(500).json({
       ok: false,
       mensaje: "Error generando reporte de inventario"
     });
