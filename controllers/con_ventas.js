@@ -2,75 +2,39 @@ import ventas from "../models/dbVentas.js";
 import Vendidos from "../models/dbVendidos.js";
 import Contador from "../models/Contador.js";
 
+// Los registros antiguos sin sede pertenecen a TIENDITA.
+const filtroPorSede = sede =>
+  sede === "MONASTERIO"
+    ? { sede: "MONASTERIO" }
+    : {
+        $or: [
+          { sede: "TIENDITA" },
+          { sede: { $exists: false } }
+        ]
+      };
 
-// =====================================================
-// FILTRO POR SEDE
-// Los registros antiguos sin sede pertenecen a TIENDITA
-// =====================================================
-const filtroPorSede = (sede) => {
-  if (sede === "MONASTERIO") {
-    return {
-      sede: "MONASTERIO"
-    };
-  }
-
-  return {
-    $or: [
-      { sede: "TIENDITA" },
-      { sede: { $exists: false } }
-    ]
-  };
-};
-
-
-// =====================================================
-// OBTENER NOMBRE DEL CONTADOR SEGÚN LA SEDE
-// =====================================================
-const obtenerTipoContador = (sede) => {
-  return sede === "MONASTERIO"
+const obtenerTipoContador = sede =>
+  sede === "MONASTERIO"
     ? "FACTURA_MONASTERIO"
     : "FACTURA_TIENDITA";
-};
 
-
-// =====================================================
-// OBTENER NÚMERO ACTUAL
-// NO INCREMENTA
-// =====================================================
-export async function FacturaNro(
-  sede = "TIENDITA"
-) {
+// CONSULTAR NÚMERO ACTUAL SIN INCREMENTAR
+export async function FacturaNro(sede = "TIENDITA") {
   const tipo = obtenerTipoContador(sede);
 
-  const doc = await Contador.findOne({
-    tipo
-  });
+  const documento = await Contador.findOne({ tipo });
 
-  if (!doc) {
-    return 0;
-  }
-
-  return doc.valor;
+  return documento ? documento.valor : 0;
 }
 
-
-// =====================================================
-// ASIGNAR NUEVO NÚMERO
-// SÍ INCREMENTA
-// =====================================================
-export async function asignarFactura(
-  sede = "TIENDITA"
-) {
+// ASIGNAR NÚMERO: COMPATIBILIDAD CON IMPORTACIONES EXISTENTES
+export async function asignarFactura(sede = "TIENDITA") {
   const tipo = obtenerTipoContador(sede);
 
-  const doc = await Contador.findOneAndUpdate(
+  const documento = await Contador.findOneAndUpdate(
+    { tipo },
     {
-      tipo
-    },
-    {
-      $inc: {
-        valor: 1
-      }
+      $inc: { valor: 1 }
     },
     {
       new: true,
@@ -79,13 +43,12 @@ export async function asignarFactura(
     }
   );
 
-  return doc.valor;
+  return documento.valor;
 }
 
-
-// =====================================================
-// CREAR VENTA / OTRO INGRESO
-// =====================================================
+// CREAR MOVIMIENTO
+// Las ventas normales utilizarán /operacion-completa.
+// Esta función conserva el flujo de otros ingresos.
 export const crearVenta = async (req, res) => {
   try {
     const sede = req.body.sede || "TIENDITA";
@@ -93,25 +56,15 @@ export const crearVenta = async (req, res) => {
     const tipoMovimiento =
       req.body.tipoMovimiento || "VENTA";
 
-    // ---------------------------------------------
-    // 1. VALIDAR SEDE
-    // ---------------------------------------------
-    if (
-      sede !== "TIENDITA" &&
-      sede !== "MONASTERIO"
-    ) {
+    if (!["TIENDITA", "MONASTERIO"].includes(sede)) {
       return res.status(400).json({
         ok: false,
         error: "Sede inválida"
       });
     }
 
-    // ---------------------------------------------
-    // 2. VALIDAR TIPO DE MOVIMIENTO
-    // ---------------------------------------------
     if (
-      tipoMovimiento !== "VENTA" &&
-      tipoMovimiento !== "OTRO_INGRESO"
+      !["VENTA", "OTRO_INGRESO"].includes(tipoMovimiento)
     ) {
       return res.status(400).json({
         ok: false,
@@ -119,106 +72,64 @@ export const crearVenta = async (req, res) => {
       });
     }
 
-    // ---------------------------------------------
-    // 3. PREPARAR DATOS
-    // ---------------------------------------------
     const datos = {
       ...req.body,
       sede,
       tipoMovimiento
     };
 
-    // =====================================================
-// OTRO INGRESO
-// =====================================================
-// Normalmente no utiliza factura.
-//
-// EXCEPCIÓN:
-// Si TIENDITA recibe una liquidación de participación,
-// ese ingreso sí se documenta con factura.
-// =====================================================
-if (tipoMovimiento === "OTRO_INGRESO") {
+    if (tipoMovimiento === "OTRO_INGRESO") {
+      const esParticipacionTiendita =
+        sede === "TIENDITA" &&
+        req.body.origenIngreso === "PARTICIPACION";
 
-  const esParticipacionTiendita =
-    sede === "TIENDITA" &&
-    req.body.origenIngreso === "PARTICIPACION";
-
-  if (!esParticipacionTiendita) {
-    datos.factura = null;
-  }
-}
-
-    // ---------------------------------------------
-    // 4. GUARDAR
-    // ---------------------------------------------
-    const venta = new ventas(datos);
-
-    const guardada = await venta.save();
-
-    // ---------------------------------------------
-// 5. INCREMENTAR CONTADOR
-// ---------------------------------------------
-// Consume número de factura cuando:
-// 1. Es una VENTA normal.
-// 2. Es una liquidación de participación
-//    recibida por TIENDITA.
-// ---------------------------------------------
-const usaFactura =
-  tipoMovimiento === "VENTA" ||
-  (
-    tipoMovimiento === "OTRO_INGRESO" &&
-    sede === "TIENDITA" &&
-    req.body.origenIngreso === "PARTICIPACION" &&
-    guardada.factura !== null
-  );
-
-if (usaFactura) {
-
-  const tipoContador =
-    obtenerTipoContador(sede);
-
-  await Contador.findOneAndUpdate(
-    {
-      tipo: tipoContador
-    },
-    {
-      $inc: {
-        valor: 1
+      if (!esParticipacionTiendita) {
+        datos.factura = null;
       }
-    },
-    {
-      upsert: true,
-      setDefaultsOnInsert: true
     }
-  );
-}
 
-    // ---------------------------------------------
-    // 6. RESPONDER AL FRONTEND
-    // ---------------------------------------------
+    const movimiento = new ventas(datos);
+
+    // Compartir la transacción creada por el middleware.
+    const guardada = await movimiento.save({
+      session: req.cajaMongo
+    });
+
+    const usaFactura =
+      tipoMovimiento === "VENTA" ||
+      (
+        tipoMovimiento === "OTRO_INGRESO" &&
+        sede === "TIENDITA" &&
+        req.body.origenIngreso === "PARTICIPACION" &&
+        guardada.factura !== null
+      );
+
+    if (usaFactura) {
+      await Contador.findOneAndUpdate(
+        {
+          tipo: obtenerTipoContador(sede)
+        },
+        {
+          $inc: { valor: 1 }
+        },
+        {
+          upsert: true,
+          setDefaultsOnInsert: true
+        }
+      ).session(req.cajaMongo);
+    }
+
     return res.json({
       ok: true,
       idVenta: guardada._id,
-
       factura: guardada.factura ?? null,
-
       numeroReciboIngreso:
         guardada.numeroReciboIngreso || "",
-
       tipoMovimiento,
       sede
     });
-
   } catch (error) {
-    console.error(
-      "Error creando movimiento:",
-      error
-    );
-
-    console.error(
-      "🔴 ERROR EXACTO:",
-      error.message
-    );
+    console.error("Error creando movimiento:", error);
 
     return res.status(500).json({
       ok: false,
@@ -229,34 +140,18 @@ if (usaFactura) {
   }
 };
 
-
-// =====================================================
 // OBTENER VENTAS POR SEDE
-// =====================================================
-export const obtenerVentas = async (
-  req,
-  res
-) => {
+export const obtenerVentas = async (req, res) => {
   try {
-    const sede =
-      req.query.sede || "TIENDITA";
-
-    const filtroSede =
-      filtroPorSede(sede);
+    const sede = req.query.sede || "TIENDITA";
 
     const lista = await ventas
-      .find(filtroSede)
-      .sort({
-        createdAt: -1
-      });
+      .find(filtroPorSede(sede))
+      .sort({ createdAt: -1 });
 
     return res.json(lista);
-
   } catch (error) {
-    console.error(
-      "Error al obtener ventas:",
-      error
-    );
+    console.error("Error al obtener ventas:", error);
 
     return res.status(500).json({
       error: "Error al obtener ventas"
@@ -264,28 +159,13 @@ export const obtenerVentas = async (
   }
 };
 
-
-// =====================================================
-// BUSCAR VENTA POR NÚMERO DE FACTURA Y SEDE
-// =====================================================
-export const buscarVentaPorNumero = async (
-  req,
-  res
-) => {
+// BUSCAR VENTA POR FACTURA Y SEDE
+export const buscarVentaPorNumero = async (req, res) => {
   try {
-    const numero = Number(
-      req.params.numeroFactura
-    );
+    const numero = Number(req.params.numeroFactura);
+    const sede = req.query.sede || "TIENDITA";
+    const filtroSede = filtroPorSede(sede);
 
-    const sede =
-      req.query.sede || "TIENDITA";
-
-    const filtroSede =
-      filtroPorSede(sede);
-
-    // ---------------------------------------------
-    // 1. Buscar venta
-    // ---------------------------------------------
     const venta = await ventas.findOne({
       factura: numero,
       ...filtroSede
@@ -298,28 +178,18 @@ export const buscarVentaPorNumero = async (
       });
     }
 
-    // ---------------------------------------------
-    // 2. Buscar productos vendidos
-    // ---------------------------------------------
     const vendidos = await Vendidos.find({
       factura: numero,
       ...filtroSede
     }).populate("productoId");
 
-    // ---------------------------------------------
-    // 3. Respuesta
-    // ---------------------------------------------
     return res.json({
       ok: true,
       venta,
       vendidos
     });
-
   } catch (error) {
-    console.error(
-      "Backend dice: Error consultando factura:",
-      error
-    );
+    console.error("Error consultando factura:", error);
 
     return res.status(500).json({
       ok: false,

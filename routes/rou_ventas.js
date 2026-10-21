@@ -10,8 +10,17 @@ import Contador from "../models/Contador.js";
 import Categoria from "../models/Categoria.js"
 import Gastos from "../models/dbGastos.js";
 import ActividadProductiva from "../models/dbListaProductiva.js";
+import { protegerVentas } from "../middleware/bloqueoVentas.js";
+import guardarOperacionCompleta from "../controllers/operacionVenta.js";
+import { revisionDia } from "../utils/transaccionCaja.js";
 
 const router = express.Router();
+
+router.use(protegerVentas);
+router.post(
+  "/operacion-completa",
+  guardarOperacionCompleta
+);
 
 // =====================================================
 // FECHA ACTUAL DE VENEZUELA
@@ -109,50 +118,11 @@ router.get("/factura-actual", async (req, res) => {
 });
 
 // Guardar factura completa (venta + vendidos + pago)
-router.post("/guardar", async (req, res) => {
-  try {
-    const { cliente, fecha, hora, subtotal, iva, total, usuario, estado, items, pago, sede } = req.body;
-    const numeroFactura = await asignarFactura(); // viene del controlador
-    const venta = new Ventas({
-      factura: numeroFactura,
-      fecha,
-      hora,
-      cliente,
-      subtotal,
-      iva,
-      total,
-      usuario,
-      estado,
-      sede: sede || "TIENDITA"
-    });
-    await venta.save();
-    for (const item of items) {
-      await new Vendidos({
-        factura: numeroFactura,
-        productoId: item.idProducto,
-        cantidad: item.cantidad,
-        precio: item.precioVenta,
-        dscto: item.descuento || 0,
-        total: item.total,
-        sede: sede || "TIENDITA"
-      }).save();
-    }
-    if (pago) {
-      await new Pago({
-        factura: numeroFactura,
-        idPago: pago.idPago,
-        idVuelto: pago.idVuelto,
-        totalAbonado: pago.totalAbonado,
-        modoCredito: pago.modoCredito,
-        abono: pago.abono,
-        saldo: pago.saldo
-      }).save();
-    }
-    return res.json({ ok: true, numeroFactura });
-  } catch (error) {
-    console.error("Error guardando factura:", error);
-    return res.status(500).json({ ok: false, msg: "Error guardando factura" });
-  }
+router.post("/guardar", (req, res) => {
+  return res.status(410).json({
+    ok: false,
+    msg: "Use el guardado completo de venta, productos y pago"
+  });
 });
 
 // Buscar venta por número (para detalle rápido)
@@ -253,6 +223,7 @@ router.get("/detalle/:factura", async (req, res) => {
 
 // REPORTE GENERAL
 // REPORTE DIARIO BASADO EN MOVIMIENTOS DE CAJA (dbMoneda)
+// REPORTE DIARIO DE VENTAS
 router.get("/reporte/:desde/:hasta", async (req, res) => {
   try {
     const { desde, hasta } = req.params;
@@ -265,16 +236,26 @@ router.get("/reporte/:desde/:hasta", async (req, res) => {
       });
     }
 
-    const fechaInicio = new Date(desde + "T00:00:00");
-    const fechaFin = new Date(hasta + "T23:59:59");
+    const fechaInicio = new Date(
+      desde + "T00:00:00.000Z"
+    );
+
+    const fechaFin = new Date(
+      hasta + "T23:59:59.999Z"
+    );
 
     const filtroSede = filtroPorSede(sede);
 
-    // =====================================================
-    // 1. MOVIMIENTOS DE DINERO DE ESTA SEDE
-    // =====================================================
+    const revisionInicial = desde === hasta
+      ? await revisionDia(desde, sede)
+      : null;
+
+    // 1. CONSULTAR MOVIMIENTOS
     const movimientos = await Moneda.find({
-      fecha: { $gte: fechaInicio, $lte: fechaFin },
+      fecha: {
+        $gte: fechaInicio,
+        $lte: fechaFin
+      },
       ...filtroSede
     }).sort({ factura: 1 });
 
@@ -285,9 +266,7 @@ router.get("/reporte/:desde/:hasta", async (req, res) => {
       });
     }
 
-    // =====================================================
     // 2. AGRUPAR POR FACTURA
-    // =====================================================
     const facturasMap = {};
 
     for (const mov of movimientos) {
@@ -311,46 +290,48 @@ router.get("/reporte/:desde/:hasta", async (req, res) => {
         };
       }
 
-      facturasMap[mov.factura].pagos.push(mov);
+      const info = facturasMap[mov.factura];
+
+      info.pagos.push(mov);
 
       if (
         mov.operacion === "VENTA" ||
         mov.operacion === "ABONO DE CREDITO"
       ) {
-        facturasMap[mov.factura].totales.efectivoP +=
+        info.totales.efectivoP +=
           Number(mov.efectivoP || 0);
 
-        facturasMap[mov.factura].totales.transferenciaP +=
+        info.totales.transferenciaP +=
           Number(mov.transferenciaP || 0);
 
-        facturasMap[mov.factura].totales.efectivoBs +=
+        info.totales.efectivoBs +=
           Number(mov.efectivoBs || 0);
 
-        facturasMap[mov.factura].totales.transferenciaBs +=
+        info.totales.transferenciaBs +=
           Number(mov.transferenciaBs || 0);
 
-        facturasMap[mov.factura].totales.puntoBs +=
+        info.totales.puntoBs +=
           Number(mov.puntoBs || 0);
 
-        facturasMap[mov.factura].totales.pagomovilBs +=
+        info.totales.pagomovilBs +=
           Number(mov.pagomovilBs || 0);
 
-        facturasMap[mov.factura].totales.efectivoD +=
+        info.totales.efectivoD +=
           Number(mov.efectivoD || 0);
 
-        facturasMap[mov.factura].totales.zelle +=
+        info.totales.zelle +=
           Number(mov.zelle || 0);
       }
 
-      // Los vueltos ya están guardados negativos
+      // Los vueltos ya están guardados negativos.
       if (mov.operacion === "VUELTOS") {
-        facturasMap[mov.factura].totales.vueltoP +=
+        info.totales.vueltoP +=
           Number(mov.efectivoP || 0);
 
-        facturasMap[mov.factura].totales.vueltoBs +=
+        info.totales.vueltoBs +=
           Number(mov.efectivoBs || 0);
 
-        facturasMap[mov.factura].totales.vueltoD +=
+        info.totales.vueltoD +=
           Number(mov.efectivoD || 0);
       }
     }
@@ -371,9 +352,7 @@ router.get("/reporte/:desde/:hasta", async (req, res) => {
       totalVueltoD: 0
     };
 
-    // =====================================================
     // 3. COMPLETAR INFORMACIÓN DE CADA FACTURA
-    // =====================================================
     for (const factura in facturasMap) {
       const info = facturasMap[factura];
 
@@ -382,7 +361,6 @@ router.get("/reporte/:desde/:hasta", async (req, res) => {
         ...filtroSede
       });
 
-      // Si no existe la venta de esta sede, no incluirla
       if (!venta) continue;
 
       const cliente = await Cliente.findOne({
@@ -396,17 +374,21 @@ router.get("/reporte/:desde/:hasta", async (req, res) => {
 
       const productos = [];
 
-      for (const v of vendidos) {
-        const prod = await Producto.findById(v.productoId);
+      for (const vendido of vendidos) {
+        const producto = await Producto.findById(
+          vendido.productoId
+        );
 
         productos.push({
-          codigo: prod?.codigo || "N/A",
-          descripcion: prod?.descripcion || "Producto no encontrado",
-          precioSistema: prod?.venta || 0,
-          cantidad: v.cantidad,
-          precioVenta: v.precio,
-          dscto: v.dscto,
-          total: v.total
+          codigo: producto?.codigo || "N/A",
+          descripcion:
+            producto?.descripcion ||
+            "Producto no encontrado",
+          precioSistema: producto?.venta || 0,
+          cantidad: vendido.cantidad,
+          precioVenta: vendido.precio,
+          dscto: vendido.dscto,
+          total: vendido.total
         });
       }
 
@@ -455,15 +437,29 @@ router.get("/reporte/:desde/:hasta", async (req, res) => {
       });
     }
 
+    // 4. COMPROBAR QUE EL DÍA NO CAMBIÓ
+    if (
+      revisionInicial !== null &&
+      await revisionDia(desde, sede) !== revisionInicial
+    ) {
+      return res.status(409).json({
+        ok: false,
+        msg:
+          "El día cambió mientras se generaba el reporte. " +
+          "Pulse Buscar de nuevo."
+      });
+    }
+
+    // 5. DEVOLVER EL REPORTE YA COMPLETO
     return res.json({
       ok: true,
       sede,
+      revisionCaja: revisionInicial,
       reporte,
       totales: totalesGlobales
     });
-
   } catch (error) {
-    console.error("ERROR REPORTE:", error);
+    console.error("Error generando reporte:", error);
 
     return res.status(500).json({
       ok: false,
@@ -1447,14 +1443,22 @@ router.put("/cambiar-estado/:id", async (req, res) => {
   try {
     const { id } = req.params;
     const { estado } = req.body;
+
     const venta = await Ventas.findByIdAndUpdate(
       id,
       { estado },
       { new: true }
-    );
-    res.json({ ok: true, venta });
-  } catch (error) {
-    res.status(500).json({ ok: false, msg: "Error actualizando estado" });
+    ).session(req.cajaMongo);
+
+    return res.json({
+      ok: true,
+      venta
+    });
+  } catch {
+    return res.status(500).json({
+      ok: false,
+      msg: "Error actualizando estado"
+    });
   }
 });
 
@@ -1512,3 +1516,4 @@ router.get("/:factura", async (req, res) => {
 });
 
 export default router;
+ 

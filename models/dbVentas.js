@@ -21,7 +21,7 @@ const VentaSchema = new mongoose.Schema(
       default: "VENTA",
       required: true
     },
-
+ 
     // ==========================================
     // DATOS DE VENTA / FACTURA
     // ==========================================

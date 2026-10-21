@@ -18,7 +18,7 @@ router.post("/", async (req, res) => {
     res.status(500).json({ ok: false, error: "Error guardando caja" });
   }
 });
-
+ 
 router.get("/:fecha", async (req, res) => {
   try {
     const db = conectarDB();

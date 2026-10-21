@@ -1,16 +1,10 @@
 import Vendidos from "../models/dbVendidos.js";
 import Producto from "../models/Producto.js";
 
-
 // =====================================================
 // CREAR PRODUCTO VENDIDO
 // =====================================================
 export const crearVendido = async (req, res) => {
-  console.log(
-    "📦 DATA RECIBIDA EN /api/vendidos:",
-    req.body
-  );
-
   try {
     const {
       factura,
@@ -22,25 +16,16 @@ export const crearVendido = async (req, res) => {
       sede = "TIENDITA"
     } = req.body;
 
-    // ---------------------------------------------
-    // 1. VALIDAR SEDE
-    // ---------------------------------------------
-    if (
-      sede !== "TIENDITA" &&
-      sede !== "MONASTERIO"
-    ) {
+    if (!["TIENDITA", "MONASTERIO"].includes(sede)) {
       return res.status(400).json({
         ok: false,
         error: "Sede inválida"
       });
     }
 
-    // ---------------------------------------------
-    // 2. BUSCAR EL PRODUCTO
-    // ---------------------------------------------
     const producto = await Producto.findById(
       productoId
-    );
+    ).session(req.cajaMongo);
 
     if (!producto) {
       return res.status(404).json({
@@ -49,17 +34,11 @@ export const crearVendido = async (req, res) => {
       });
     }
 
-    // ---------------------------------------------
-    // 3. ACTIVIDAD PRODUCTIVA
-    // Se congela la actividad que tiene el producto
-    // al momento de realizar la venta.
-    // ---------------------------------------------
+    // Conservar la actividad que tiene el producto
+    // al momento de registrar la venta.
     const actividadProductiva =
       producto.actividadProductiva || null;
 
-    // ---------------------------------------------
-    // 4. REGLA DE PARTICIPACIÓN
-    // ---------------------------------------------
     const generaParticipacion =
       Boolean(producto.generaParticipacion);
 
@@ -70,50 +49,33 @@ export const crearVendido = async (req, res) => {
 
     if (generaParticipacion) {
       beneficiarioParticipacion =
-        producto.beneficiarioParticipacion ||
-        "NINGUNO";
+        producto.beneficiarioParticipacion || "NINGUNO";
 
       tipoParticipacion =
-        producto.tipoParticipacion ||
-        "NINGUNA";
+        producto.tipoParticipacion || "NINGUNA";
 
-      valorParticipacion =
-        Number(
-          producto.valorParticipacion || 0
-        );
+      valorParticipacion = Number(
+        producto.valorParticipacion || 0
+      );
 
-      // -------------------------------------------
-      // 5. CALCULAR PARTICIPACIÓN
-      // -------------------------------------------
-      if (
-        tipoParticipacion === "PORCENTAJE"
-      ) {
+      if (tipoParticipacion === "PORCENTAJE") {
         montoParticipacion =
           Number(total || 0) *
           valorParticipacion /
           100;
       }
 
-      if (
-        tipoParticipacion === "MONTO_FIJO"
-      ) {
+      if (tipoParticipacion === "MONTO_FIJO") {
         montoParticipacion =
           Number(cantidad || 0) *
           valorParticipacion;
       }
     }
 
-    // Redondear a 2 decimales
-    montoParticipacion =
-      Math.round(
-        (montoParticipacion +
-          Number.EPSILON) *
-          100
-      ) / 100;
+    montoParticipacion = Math.round(
+      (montoParticipacion + Number.EPSILON) * 100
+    ) / 100;
 
-    // ---------------------------------------------
-    // 6. GUARDAR VENDIDO
-    // ---------------------------------------------
     const vendido = new Vendidos({
       factura,
       productoId,
@@ -122,47 +84,39 @@ export const crearVendido = async (req, res) => {
       dscto,
       total,
       sede,
-
       actividadProductiva,
-
       generaParticipacion,
-
       beneficiarioParticipacion,
-
       tipoParticipacion,
-
       valorParticipacion,
-
       montoParticipacion
     });
 
-    await vendido.save();
+    // Compartir la transacción creada por el middleware.
+    await vendido.save({
+      session: req.cajaMongo
+    });
 
-    // ---------------------------------------------
-    // 7. RESPUESTA
-    // ---------------------------------------------
     return res.json({
       ok: true,
       vendido
     });
-
   } catch (error) {
-    console.error(
-      "Error guardando producto vendido:",
-      error
-    );
+    const conflicto =
+      error.code === 112 ||
+      error.hasErrorLabel?.("TransientTransactionError");
 
-    return res.status(500).json({
+    return res.status(conflicto ? 409 : 500).json({
       ok: false,
       error:
-        "Error al guardar producto vendido"
+        "No se pudo guardar el producto vendido; " +
+        "actualice y vuelva a intentarlo"
     });
   }
 };
 
-
 // =====================================================
-// OBTENER PRODUCTOS VENDIDOS POR FACTURA
+// OBTENER PRODUCTOS VENDIDOS POR FACTURA Y SEDE
 // =====================================================
 export const obtenerVendidosPorVenta = async (req, res) => {
   try {
@@ -170,25 +124,33 @@ export const obtenerVendidosPorVenta = async (req, res) => {
     const sede = req.query.sede || "TIENDITA";
 
     if (!["TIENDITA", "MONASTERIO"].includes(sede)) {
-      return res.status(400).json({ ok: false, error: "Sede inválida" });
+      return res.status(400).json({
+        ok: false,
+        error: "Sede inválida"
+      });
     }
 
     const filtroSede = sede === "MONASTERIO"
       ? { sede: "MONASTERIO" }
-      : { $or: [{ sede: "TIENDITA" }, { sede: { $exists: false } }] };
+      : {
+          $or: [
+            { sede: "TIENDITA" },
+            { sede: { $exists: false } }
+          ]
+        };
 
     const vendidos = await Vendidos.find({
       factura,
       ...filtroSede
     })
       .populate("productoId")
-      .populate("actividadProductiva", "descripcion activa");
-
-    console.log(`Factura ${factura} - Sede ${sede}: ${vendidos.length} productos encontrados`);
+      .populate(
+        "actividadProductiva",
+        "descripcion activa"
+      );
 
     return res.json(vendidos);
-  } catch (error) {
-    console.error("Error al obtener vendidos:", error);
+  } catch {
     return res.status(500).json({
       ok: false,
       error: "Error al obtener productos vendidos"

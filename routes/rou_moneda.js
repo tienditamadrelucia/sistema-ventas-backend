@@ -3,66 +3,100 @@
 import express from "express";
 import Moneda from "../models/dbMoneda.js";
 
+import {
+  protegerMoneda
+} from "../middleware/bloqueoVentas.js";
+
 const router = express.Router();
 
+router.use(protegerMoneda);
+
+// =====================================================
+// REGISTRAR MOVIMIENTO
+// =====================================================
 router.post("/", async (req, res) => {
-  try {    
+  try {
     const nuevo = new Moneda(req.body);
-    await nuevo.save();
+
+    await nuevo.save({
+      session: req.cajaMongo
+    });
+
     return res.json({
       ok: true,
       mensaje: "Movimiento registrado correctamente",
       moneda: nuevo
     });
   } catch (error) {
-  console.error("❌ ERROR GUARDANDO MONEDA:", error);
-  let mensaje = "Error en el servidor";
-  // Detectar error específico de fecha requerida
-  if (error?.errors?.fecha?.kind === "required") {
-    mensaje = "Falta ingresar la fecha del pago";
-  }
-  return res.status(500).json({
-    ok: false,
-    mensaje,
-    detalle: error.message
-  });
-}
+    let mensaje = "Error en el servidor";
 
-});
-
-// OBTENER TODOS LOS MOVIMIENTOS (opcional)
-router.get("/", async (req, res) => {
-  try {
-    const lista = await Moneda.find().sort({ createdAt: -1 });
-    return res.json({ ok: true, lista });
-  } catch (error) {
-    console.error("Error obteniendo movimientos:", error);
-    return res.status(500).json({
-      ok: false,
-      mensaje: "Error en el servidor"
-    });
-  }
-});
-
-// OBTENER MOVIMIENTO POR ID (opcional)
-router.get("/:id", async (req, res) => {
-  try {
-    const mov = await Moneda.findById(req.params.id);
-    if (!mov) {
-      return res.json({ ok: false, mensaje: "Movimiento no encontrado" });
+    if (error?.errors?.fecha?.kind === "required") {
+      mensaje = "Falta ingresar la fecha del pago";
     }
-    return res.json({ ok: true, mov });
-  } catch (error) {
-    console.error("Error obteniendo movimiento:", error);
+
     return res.status(500).json({
       ok: false,
-      mensaje: "Error en el servidor"
+      mensaje,
+      detalle: error.message
     });
   }
 });
 
 // =====================================================
-// BUSCAR MOVIMIENTOS POR FACTURA Y SEDE
+// OBTENER TODOS LOS MOVIMIENTOS
+// =====================================================
+router.get("/", async (req, res) => {
+  try {
+    const lista = await Moneda.find()
+      .session(req.cajaMongo)
+      .sort({ createdAt: -1 });
+
+    return res.json({
+      ok: true,
+      lista
+    });
+  } catch {
+    return res.status(500).json({
+      ok: false,
+      mensaje: "Error obteniendo movimientos"
+    });
+  }
+});
+
+// =====================================================
+// BUSCAR POR RANGO
+// Debe declararse antes de GET /:id.
+// =====================================================
+router.get("/rango", async (req, res) => {
+  try {
+    const { desde, hasta } = req.query;
+
+    const inicio = new Date(desde);
+    const fin = new Date(hasta);
+
+    fin.setDate(fin.getDate() + 1);
+
+    const lista = await Moneda.find({
+      fecha: {
+        $gte: inicio,
+        $lt: fin
+      }
+    }).session(req.cajaMongo);
+
+    return res.json({
+      ok: true,
+      lista
+    });
+  } catch {
+    return res.status(500).json({
+      ok: false,
+      mensaje: "Error buscando movimientos por rango"
+    });
+  }
+});
+
+// =====================================================
+// BUSCAR POR FACTURA Y SEDE
 // =====================================================
 router.get("/factura/:numero", async (req, res) => {
   try {
@@ -70,89 +104,101 @@ router.get("/factura/:numero", async (req, res) => {
     const sede = req.query.sede || "TIENDITA";
 
     if (!["TIENDITA", "MONASTERIO"].includes(sede)) {
-      return res.status(400).json({ ok: false, mensaje: "Sede inválida" });
+      return res.status(400).json({
+        ok: false,
+        mensaje: "Sede inválida"
+      });
     }
 
     const filtroSede = sede === "MONASTERIO"
       ? { sede: "MONASTERIO" }
-      : { $or: [{ sede: "TIENDITA" }, { sede: { $exists: false } }] };
+      : {
+          $or: [
+            { sede: "TIENDITA" },
+            { sede: { $exists: false } }
+          ]
+        };
 
     const lista = await Moneda.find({
       factura: numero,
       ...filtroSede
-    }).sort({ fecha: 1, createdAt: 1 });
+    })
+      .session(req.cajaMongo)
+      .sort({
+        fecha: 1,
+        createdAt: 1
+      });
 
-    console.log(`💰 Factura ${numero} - ${sede}: ${lista.length} movimientos encontrados`);
-
-    return res.json({ ok: true, lista });
-  } catch (error) {
-    console.error("Error buscando movimientos por factura:", error);
-    return res.status(500).json({ ok: false, mensaje: "Error en el servidor" });
+    return res.json({
+      ok: true,
+      lista
+    });
+  } catch {
+    return res.status(500).json({
+      ok: false,
+      mensaje: "Error buscando movimientos por factura"
+    });
   }
 });
 
-// BUSCAR MOVIMIENTOS POR FECHA EXACTA
+// =====================================================
+// BUSCAR POR FECHA
+// =====================================================
 router.get("/fecha/:dia", async (req, res) => {
   try {
     const sede = req.query.sede || "TIENDITA";
 
     const dia = new Date(req.params.dia);
     const siguiente = new Date(dia);
+
     siguiente.setDate(siguiente.getDate() + 1);
 
     const lista = await Moneda.find({
-      sede: sede,
-      fecha: { $gte: dia, $lt: siguiente }
+      sede,
+      fecha: {
+        $gte: dia,
+        $lt: siguiente
+      }
+    }).session(req.cajaMongo);
+
+    return res.json({
+      ok: true,
+      lista
     });
-
-    return res.json({ ok: true, lista });
-
-  } catch (error) {
-    console.error("Error buscando movimientos por fecha:", error);
-
+  } catch {
     return res.status(500).json({
       ok: false,
-      mensaje: "Error en el servidor"
+      mensaje: "Error buscando movimientos por fecha"
     });
   }
 });
 
-// BUSCAR MOVIMIENTOS POR RANGO DE FECHAS
-router.get("/rango", async (req, res) => {
-  try {
-    const { desde, hasta } = req.query;
-
-    const inicio = new Date(desde);
-    const fin = new Date(hasta);
-    fin.setDate(fin.getDate() + 1);
-
-    const lista = await Moneda.find({
-      fecha: { $gte: inicio, $lt: fin }
-    });
-
-    return res.json({ ok: true, lista });
-
-  } catch (error) {
-    console.error("Error buscando movimientos por rango:", error);
-    return res.status(500).json({ ok: false, mensaje: "Error en el servidor" });
-  }
-});
-
-// BUSCAR MOVIMIENTOS POR OPERACIÓN
+// =====================================================
+// BUSCAR POR OPERACIÓN
+// =====================================================
 router.get("/operacion/:tipo", async (req, res) => {
   try {
     const tipo = req.params.tipo.toUpperCase();
-    const lista = await Moneda.find({ operacion: tipo });
 
-    return res.json({ ok: true, lista });
+    const lista = await Moneda.find({
+      operacion: tipo
+    }).session(req.cajaMongo);
 
-  } catch (error) {
-    console.error("Error buscando movimientos por operación:", error);
-    return res.status(500).json({ ok: false, mensaje: "Error en el servidor" });
+    return res.json({
+      ok: true,
+      lista
+    });
+  } catch {
+    return res.status(500).json({
+      ok: false,
+      mensaje: "Error buscando movimientos por operación"
+    });
   }
 });
 
-// BUSCAR MOVIMIENTOS POR REFERENCIA
+// =====================================================
+// BUSCAR POR REFERENCIA
+// =====================================================
 router.get("/referencia/:ref", async (req, res) => {
   try {
     const ref = req.params.ref;
@@ -164,20 +210,27 @@ router.get("/referencia/:ref", async (req, res) => {
         { "referencia-PMBs": ref },
         { "referencia-Z": ref }
       ]
+    }).session(req.cajaMongo);
+
+    return res.json({
+      ok: true,
+      lista
     });
-
-    return res.json({ ok: true, lista });
-
-  } catch (error) {
-    console.error("Error buscando por referencia:", error);
-    return res.status(500).json({ ok: false, mensaje: "Error en el servidor" });
+  } catch {
+    return res.status(500).json({
+      ok: false,
+      mensaje: "Error buscando por referencia"
+    });
   }
 });
 
-// BUSCAR MOVIMIENTOS POR BANCO
+// =====================================================
+// BUSCAR POR BANCO
+// =====================================================
 router.get("/banco/:nombre", async (req, res) => {
   try {
     const banco = req.params.nombre.toUpperCase();
+
     const lista = await Moneda.find({
       $or: [
         { "banco-P": banco },
@@ -185,43 +238,98 @@ router.get("/banco/:nombre", async (req, res) => {
         { "banco-PMBs": banco },
         { "banco-Z": banco }
       ]
+    }).session(req.cajaMongo);
+
+    return res.json({
+      ok: true,
+      lista
     });
-    return res.json({ ok: true, lista });
-  } catch (error) {
-    console.error("Error buscando por banco:", error);
-    return res.status(500).json({ ok: false, mensaje: "Error en el servidor" });
+  } catch {
+    return res.status(500).json({
+      ok: false,
+      mensaje: "Error buscando por banco"
+    });
   }
 });
 
+// =====================================================
+// OBTENER MOVIMIENTO POR ID
+// =====================================================
+router.get("/:id", async (req, res) => {
+  try {
+    const movimiento = await Moneda.findById(
+      req.params.id
+    ).session(req.cajaMongo);
+
+    if (!movimiento) {
+      return res.json({
+        ok: false,
+        mensaje: "Movimiento no encontrado"
+      });
+    }
+
+    return res.json({
+      ok: true,
+      mov: movimiento
+    });
+  } catch {
+    return res.status(500).json({
+      ok: false,
+      mensaje: "Error obteniendo movimiento"
+    });
+  }
+});
+
+// =====================================================
 // ACTUALIZAR MOVIMIENTO
+// =====================================================
 router.put("/:id", async (req, res) => {
   try {
-    const id = req.params.id;
-    const data = req.body;
     const actualizado = await Moneda.findByIdAndUpdate(
-      id,
-      data,
-      { new: true }
-    );
+      req.params.id,
+      req.body,
+      {
+        new: true
+      }
+    ).session(req.cajaMongo);
+
     if (!actualizado) {
-      return res.status(404).json({ ok: false, mensaje: "Documento no encontrado" });
+      return res.status(404).json({
+        ok: false,
+        mensaje: "Documento no encontrado"
+      });
     }
-    return res.json({ ok: true, moneda: actualizado });
+
+    return res.json({
+      ok: true,
+      moneda: actualizado
+    });
   } catch (error) {
-    console.error("❌ ERROR ACTUALIZANDO MONEDA:", error);
-    return res.status(500).json({ ok: false, mensaje: error.message });
+    return res.status(500).json({
+      ok: false,
+      mensaje: error.message
+    });
   }
 });
 
+// =====================================================
 // ELIMINAR MOVIMIENTO
+// =====================================================
 router.delete("/:id", async (req, res) => {
   try {
-    const id = req.params.id;
-    const eliminado = await Moneda.findByIdAndDelete(id);
-    return res.json({ ok: true, eliminado });
+    const eliminado = await Moneda.findByIdAndDelete(
+      req.params.id
+    ).session(req.cajaMongo);
+
+    return res.json({
+      ok: true,
+      eliminado
+    });
   } catch (error) {
-    console.error("❌ ERROR ELIMINANDO MONEDA:", error);
-    return res.status(500).json({ ok: false, mensaje: error.message });
+    return res.status(500).json({
+      ok: false,
+      mensaje: error.message
+    });
   }
 });
 

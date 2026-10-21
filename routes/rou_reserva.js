@@ -1,223 +1,282 @@
 import express from "express";
+
 import FacturaReserva from "../models/FacturaReserva.js";
 import Vendidos from "../models/dbVendidos.js";
 import Moneda from "../models/dbMoneda.js";
 import Ventas from "../models/dbVentas.js";
 import Contador from "../models/Contador.js";
 
+import {
+  protegerFacturas
+} from "../middleware/bloqueoVentas.js";
+
 const router = express.Router();
 
-/*
-  ============================================================
-  1) MARCAR RESERVA CON PAGO (solo para compatibilidad antigua)
-  ============================================================
-*/
+router.use(protegerFacturas);
+
+// =====================================================
+// MARCAR RESERVA CON PAGO
+// Compatibilidad con el flujo antiguo.
+// =====================================================
 router.post("/marcar-pago", async (req, res) => {
   try {
     const { numeroFactura } = req.body;
+
     if (!numeroFactura) {
-      return res.status(400).json({ ok: false, msg: "Falta numeroFactura" });
+      return res.status(400).json({
+        ok: false,
+        msg: "Falta numeroFactura"
+      });
     }
 
-    const reserva = await FacturaReserva.findOne({ numero: numeroFactura });
+    const reserva = await FacturaReserva.findOne({
+      numero: numeroFactura
+    }).session(req.cajaMongo);
+
     if (!reserva) {
-      return res.status(404).json({ ok: false, msg: "Reserva no encontrada" });
+      return res.status(404).json({
+        ok: false,
+        msg: "Reserva no encontrada"
+      });
     }
 
     reserva.pagoAsociado = true;
-    await reserva.save();
 
-    return res.json({ ok: true });
-  } catch (error) {
-    console.error("Error marcando pago en reserva:", error);
-    return res.status(500).json({ ok: false, msg: "Error marcando pago asociado" });
+    await reserva.save({
+      session: req.cajaMongo
+    });
+
+    return res.json({
+      ok: true
+    });
+  } catch {
+    return res.status(500).json({
+      ok: false,
+      msg: "Error marcando pago asociado"
+    });
   }
 });
 
-/*
-  ============================================================
-  2) CANCELAR RESERVA SIN PAGO (flujo antiguo)
-  ============================================================
-*/
-router.delete("/cancelar-sin-pago/:reservaId", async (req, res) => {
-  try {
-    const { reservaId } = req.params;
+// =====================================================
+// CANCELAR RESERVA SIN PAGO
+// Compatibilidad con el flujo antiguo.
+// =====================================================
+router.delete(
+  "/cancelar-sin-pago/:reservaId",
+  async (req, res) => {
+    try {
+      const { reservaId } = req.params;
 
-    const reserva = await FacturaReserva.findById(reservaId);
-    if (!reserva) {
-      return res.status(404).json({ ok: false, msg: "Reserva no encontrada" });
-    }
+      const reserva = await FacturaReserva.findById(
+        reservaId
+      ).session(req.cajaMongo);
 
-    if (reserva.estado !== "RESERVADA") {
-      return res.status(400).json({ ok: false, msg: "Solo se pueden cancelar facturas reservadas" });
-    }
+      if (!reserva) {
+        return res.status(404).json({
+          ok: false,
+          msg: "Reserva no encontrada"
+        });
+      }
 
-    if (reserva.pagoAsociado) {
-      return res.status(400).json({ ok: false, msg: "La factura tiene pago asociado" });
-    }
+      if (reserva.estado !== "RESERVADA") {
+        return res.status(400).json({
+          ok: false,
+          msg: "Solo se pueden cancelar facturas reservadas"
+        });
+      }
 
-    const numero = reserva.numero;
+      if (reserva.pagoAsociado) {
+        return res.status(400).json({
+          ok: false,
+          msg: "La factura tiene pago asociado"
+        });
+      }
 
-    await FacturaReserva.deleteOne({ _id: reservaId });
+      const numero = reserva.numero;
 
-    // Retroceder contador SOLO si este número es el último
-    const contador = await Contador.findOne({ tipo: "FACTURA" });
-    if (contador.valor === numero) {
-      contador.valor = contador.valor - 1;
-      await contador.save();
-    }
+      await FacturaReserva.deleteOne({
+        _id: reservaId
+      }).session(req.cajaMongo);
 
-    return res.json({ ok: true, msg: "Factura cancelada y contador ajustado" });
-  } catch (error) {
-    console.error("Error cancelando factura sin pago:", error);
-    return res.status(500).json({ ok: false, msg: "Error cancelando factura sin pago" });
-  }
-});
+      const contador = await Contador.findOne({
+        tipo: "FACTURA"
+      }).session(req.cajaMongo);
 
-/*
-  ============================================================
-  3) CANCELAR RESERVA CON PAGO (flujo antiguo)
-  ============================================================
-*/
-router.delete("/cancelar-con-pago/:reservaId", async (req, res) => {
-  try {
-    const { reservaId } = req.params;
+      if (contador && contador.valor === numero) {
+        contador.valor -= 1;
 
-    const reserva = await FacturaReserva.findById(reservaId);
-    if (!reserva) {
-      return res.status(404).json({ ok: false, msg: "Reserva no encontrada" });
-    }
+        await contador.save({
+          session: req.cajaMongo
+        });
+      }
 
-    if (reserva.estado !== "RESERVADA") {
-      return res.status(400).json({ ok: false, msg: "Solo se pueden cancelar facturas reservadas" });
-    }
-
-    const numeroFactura = reserva.numero;
-
-    // Eliminar pagos asociados
-    await Moneda.deleteMany({ factura: numeroFactura });
-
-    // Eliminar reserva
-    await FacturaReserva.deleteOne({ _id: reservaId });
-
-    // NO retroceder contador porque hubo pago
-    return res.json({ ok: true, msg: "Factura con pago cancelada correctamente" });
-  } catch (error) {
-    console.error("Error cancelando factura con pago:", error);
-    return res.status(500).json({ ok: false, msg: "Error cancelando factura con pago" });
-  }
-});
-
-/*
-  ============================================================
-  4) ELIMINAR TODO (pago + venta + reserva + revertir contador)
-     ⚠️ SOLO USAR SI LA FACTURA NO SE HA GUARDADO
-  ============================================================
-*/
-router.delete("/eliminar-completa/:factura", async (req, res) => {
-  try {
-    const factura = Number(req.params.factura);
-    const sede = req.query.sede || "TIENDITA";
-
-    if (!["TIENDITA", "MONASTERIO"].includes(sede)) {
-      return res.status(400).json({
+      return res.json({
+        ok: true,
+        msg: "Factura cancelada y contador ajustado"
+      });
+    } catch {
+      return res.status(500).json({
         ok: false,
-        mensaje: "Sede inválida"
+        msg: "Error cancelando factura sin pago"
       });
     }
+  }
+);
 
-    // =====================================================
-    // 1. ELIMINAR RESERVA
-    // =====================================================
-    // FacturaReserva pertenece al flujo antiguo.
-    // Por ahora solo intentamos eliminarla para TIENDITA,
-    // evitando afectar al Monasterio.
-    if (sede === "TIENDITA") {
-      await FacturaReserva.findOneAndDelete({
-        numero: factura
+// =====================================================
+// CANCELAR RESERVA CON PAGO
+// Compatibilidad con el flujo antiguo.
+// =====================================================
+router.delete(
+  "/cancelar-con-pago/:reservaId",
+  async (req, res) => {
+    try {
+      const { reservaId } = req.params;
+
+      const reserva = await FacturaReserva.findById(
+        reservaId
+      ).session(req.cajaMongo);
+
+      if (!reserva) {
+        return res.status(404).json({
+          ok: false,
+          msg: "Reserva no encontrada"
+        });
+      }
+
+      if (reserva.estado !== "RESERVADA") {
+        return res.status(400).json({
+          ok: false,
+          msg: "Solo se pueden cancelar facturas reservadas"
+        });
+      }
+
+      await Moneda.deleteMany({
+        factura: reserva.numero
+      }).session(req.cajaMongo);
+
+      await FacturaReserva.deleteOne({
+        _id: reservaId
+      }).session(req.cajaMongo);
+
+      return res.json({
+        ok: true,
+        msg: "Factura con pago cancelada correctamente"
+      });
+    } catch {
+      return res.status(500).json({
+        ok: false,
+        msg: "Error cancelando factura con pago"
       });
     }
+  }
+);
 
-    // =====================================================
-    // 2. ELIMINAR MOVIMIENTOS DE MONEDA DE ESA SEDE
-    // =====================================================
-    await Moneda.deleteMany({
-      factura: factura,
-      sede: sede
-    });
+// =====================================================
+// ELIMINAR FACTURA COMPLETA POR SEDE
+// El middleware comprueba todas las fechas afectadas.
+// =====================================================
+router.delete(
+  "/eliminar-completa/:factura",
+  async (req, res) => {
+    try {
+      const factura = Number(req.params.factura);
+      const sede = req.query.sede || "TIENDITA";
 
-    // =====================================================
-    // 3. ELIMINAR VENTA DE ESA SEDE
-    // =====================================================
-    await Ventas.deleteMany({
-      factura: factura,
-      sede: sede
-    });
+      if (!["TIENDITA", "MONASTERIO"].includes(sede)) {
+        return res.status(400).json({
+          ok: false,
+          mensaje: "Sede inválida"
+        });
+      }
 
-    // =====================================================
-    // 4. ELIMINAR PRODUCTOS VENDIDOS DE ESA SEDE
-    // =====================================================
-    await Vendidos.deleteMany({
-      factura: factura,
-      sede: sede
-    });
+      // Las reservas antiguas corresponden a Tiendita.
+      if (sede === "TIENDITA") {
+        await FacturaReserva.findOneAndDelete({
+          numero: factura
+        }).session(req.cajaMongo);
+      }
 
-    // =====================================================
-    // 5. CONTADOR CORRESPONDIENTE A LA SEDE
-    // =====================================================
-    const tipoContador =
-      sede === "MONASTERIO"
+      await Moneda.deleteMany({
+        factura,
+        sede
+      }).session(req.cajaMongo);
+
+      await Ventas.deleteMany({
+        factura,
+        sede
+      }).session(req.cajaMongo);
+
+      await Vendidos.deleteMany({
+        factura,
+        sede
+      }).session(req.cajaMongo);
+
+      const tipoContador = sede === "MONASTERIO"
         ? "FACTURA_MONASTERIO"
         : "FACTURA_TIENDITA";
 
-    const contador = await Contador.findOne({
-      tipo: tipoContador
-    });
+      const contador = await Contador.findOne({
+        tipo: tipoContador
+      }).session(req.cajaMongo);
 
-    // Retroceder solamente si estamos eliminando
-    // exactamente la última factura emitida.
-    if (contador && contador.valor === factura) {
-      await Contador.findOneAndUpdate(
-        { tipo: tipoContador },
-        { $inc: { valor: -1 } }
-      );
+      // Ajustar únicamente si es la última factura.
+      if (contador && contador.valor === factura) {
+        await Contador.findOneAndUpdate(
+          {
+            tipo: tipoContador
+          },
+          {
+            $inc: {
+              valor: -1
+            }
+          }
+        ).session(req.cajaMongo);
+      }
+
+      return res.json({
+        ok: true,
+        mensaje:
+          `Factura ${factura} de ${sede} ` +
+          "eliminada correctamente"
+      });
+    } catch (error) {
+      return res.status(500).json({
+        ok: false,
+        mensaje: "Error eliminando factura completa",
+        detalle: error.message
+      });
+    }
+  }
+);
+
+// =====================================================
+// ELIMINAR RESERVA POR ID
+// Compatibilidad con el flujo antiguo.
+// =====================================================
+router.delete("/eliminar/:id", async (req, res) => {
+  try {
+    const reserva =
+      await FacturaReserva.findByIdAndDelete(
+        req.params.id
+      ).session(req.cajaMongo);
+
+    if (!reserva) {
+      return res.status(404).json({
+        ok: false,
+        msg: "Reserva no encontrada"
+      });
     }
 
     return res.json({
       ok: true,
-      mensaje: `Factura ${factura} de ${sede} eliminada correctamente`
+      msg: "Reserva eliminada"
     });
-
-  } catch (error) {
-    console.error(
-      "Error eliminando factura completa:",
-      error
-    );
-
+  } catch {
     return res.status(500).json({
       ok: false,
-      mensaje: "Error eliminando factura completa",
-      detalle: error.message
+      msg: "Error eliminando reserva"
     });
-  }
-});
-
-/*
-  ============================================================
-  5) ELIMINAR RESERVA POR ID (compatibilidad)
-  ============================================================
-*/
-router.delete("/eliminar/:id", async (req, res) => {
-  try {
-    const { id } = req.params;
-    const reserva = await FacturaReserva.findByIdAndDelete(id);
-    if (!reserva) {
-      return res.status(404).json({ ok: false, msg: "Reserva no encontrada" });
-    }
-    return res.json({ ok: true, msg: "Reserva eliminada" });
-  } catch (error) {
-    console.error("Error eliminando reserva:", error);
-    return res.status(500).json({ ok: false, msg: "Error eliminando reserva" });
   }
 });
 

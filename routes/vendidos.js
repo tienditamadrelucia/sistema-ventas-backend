@@ -1,32 +1,100 @@
 import express from "express";
-import { conectarDB} from "../db/conexion.js";
+
+import {
+  crearVendido,
+  obtenerVendidosPorVenta
+} from "../controllers/con_vendidos.js";
+
+import Ventas from "../models/dbVentas.js";
+
+import {
+  protegerEscrituras,
+  fallo,
+  validarSede
+} from "../utils/controlCaja.js";
 
 const router = express.Router();
 
-router.post("/", async (req, res) => {
-  try {
-    const db = conectarDB();
-    const items = req.body;
+router.use(
+  protegerEscrituras(async req => {
+    const ruta = req.path.replace(/\/$/, "") || "/";
 
-    const resultado = await db.collection("vendidos").insertMany(items);
+    if (req.method !== "POST" || ruta !== "/") {
+      throw fallo(
+        403,
+        "Operación de productos vendidos no reconocida"
+      );
+    }
 
-    res.json({ ok: true, insertados: resultado.insertedCount });
-  } catch (error) {
-    res.status(500).json({ ok: false, error: "Error guardando vendidos" });
-  }
-});
+    const datos = req.body;
 
-router.get("/:factura", async (req, res) => {
-  try {
-    const db = conectarDB();
-    const factura = Number(req.params.factura);
+    if (
+      !datos ||
+      typeof datos !== "object" ||
+      Array.isArray(datos)
+    ) {
+      throw fallo(400, "Datos inválidos");
+    }
 
-    const items = await db.collection("vendidos").find({ factura }).toArray();
+    if (
+      typeof datos.factura !== "number" &&
+      typeof datos.factura !== "string"
+    ) {
+      throw fallo(400, "Número de factura inválido");
+    }
 
-    res.json(items);
-  } catch (error) {
-    res.status(500).json({ ok: false, error: "Error consultando vendidos" });
-  }
-});
+    const factura = Number(datos.factura);
+    const sede = validarSede(datos.sede || "TIENDITA");
+
+    if (
+      !Number.isSafeInteger(factura) ||
+      factura <= 0
+    ) {
+      throw fallo(400, "Número de factura inválido");
+    }
+
+    const filtroSede = sede === "MONASTERIO"
+      ? { sede }
+      : {
+          $or: [
+            { sede: "TIENDITA" },
+            { sede: { $exists: false } }
+          ]
+        };
+
+    // Obtener la fecha desde la venta guardada.
+    // No confiar en una fecha enviada con el producto.
+    const coincidencias = await Ventas.find({
+      factura,
+      ...filtroSede
+    })
+      .select("fecha sede")
+      .limit(2);
+
+    if (coincidencias.length === 0) {
+      throw fallo(
+        409,
+        "Debe existir la venta antes de registrar sus productos"
+      );
+    }
+
+    if (coincidencias.length > 1) {
+      throw fallo(
+        409,
+        "Hay más de una venta con esa factura y sede; " +
+        "debe revisarse antes de añadir productos"
+      );
+    }
+
+    return [{
+      fecha: coincidencias[0].fecha,
+      sede
+    }];
+  })
+);
+
+router.post("/", crearVendido);
+
+router.get("/:factura", obtenerVendidosPorVenta);
 
 export default router;

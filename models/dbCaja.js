@@ -11,7 +11,7 @@ const dbCajaSchema = new mongoose.Schema({
     P: { type: Number, default: 0 },
     Bs: { type: Number, default: 0 }
   },  
-  gastos: {
+  gastos: { 
     D: { type: Number, default: 0 },
     P: { type: Number, default: 0 },
     Bs: { type: Number, default: 0 }
