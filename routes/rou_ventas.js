@@ -11,7 +11,9 @@ import Categoria from "../models/Categoria.js"
 import Gastos from "../models/dbGastos.js";
 import ActividadProductiva from "../models/dbListaProductiva.js";
 import { protegerVentas } from "../middleware/bloqueoVentas.js";
-import guardarOperacionCompleta from "../controllers/operacionVenta.js";
+import {
+  guardarOperacionCompleta
+} from "../controllers/operacionVenta.js";
 import { revisionDia } from "../utils/transaccionCaja.js";
 
 const router = express.Router();
