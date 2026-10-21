@@ -15,8 +15,17 @@ import {
   guardarOperacionCompleta
 } from "../controllers/operacionVenta.js";
 import { revisionDia } from "../utils/transaccionCaja.js";
+import {
+  soloAdministradorActividad,
+  obtenerFlujoActividad
+} from "../controllers/flujoActividad.js";
 
 const router = express.Router();
+router.get(
+  "/flujo-actividad",
+  soloAdministradorActividad,
+  obtenerFlujoActividad
+);
 
 router.use(protegerVentas);
 router.post(
@@ -920,7 +929,7 @@ router.get("/resumen", async (req, res) => {
 // Ventas de ambas sedes - Costos de producción
 // Todos los valores finales expresados en USD
 // =====================================================
-router.get("/utilidad-actividad", async (req, res) => {
+router.get("/utilidad-actividad", soloAdministradorActividad, async (req, res) => {
   try {
     const { desde, hasta } = req.query;
 
