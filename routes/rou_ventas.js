@@ -12,6 +12,9 @@ import Gastos from "../models/dbGastos.js";
 import ActividadProductiva from "../models/dbListaProductiva.js";
 import { protegerVentas } from "../middleware/bloqueoVentas.js";
 import {
+  obtenerGananciaReventa
+} from "../controllers/gananciaReventa.js";
+import {
   guardarOperacionCompleta
 } from "../controllers/operacionVenta.js";
 import { revisionDia } from "../utils/transaccionCaja.js";
@@ -25,6 +28,12 @@ router.get(
   "/flujo-actividad",
   soloAdministradorActividad,
   obtenerFlujoActividad
+);
+
+router.get(
+  "/ganancia-reventa",
+  soloAdministradorActividad,
+  obtenerGananciaReventa
 );
 
 router.use(protegerVentas);

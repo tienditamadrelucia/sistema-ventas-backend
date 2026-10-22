@@ -41,6 +41,24 @@ const VendidoSchema = new mongoose.Schema(
     },
 
     // ==========================================
+    // ORIGEN Y COSTO AL MOMENTO DE LA VENTA
+    // ==========================================
+
+    origenProducto: {
+      type: String,
+      enum: ["COMPRADO", "PRODUCCION_MONASTERIO"],
+      default: undefined
+    },
+
+    // Costo por unidad en dólares.
+    // Ausente significa que el costo histórico no se conoce.
+    costoUnitarioUSD: {
+      type: Number,
+      min: 0,
+      default: undefined
+    },
+
+    // ==========================================
     // ACTIVIDAD PRODUCTIVA AL MOMENTO DE LA VENTA
     // ==========================================
     actividadProductiva: {

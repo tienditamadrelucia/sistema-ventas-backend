@@ -54,6 +54,13 @@ router.get("/", async (req, res) => {
 // -------------------------------------------------------------
 router.post("/", async (req, res) => {
   try {
+        if (req.body.observacion === "COMPRAS") {
+      return res.status(400).json({
+        ok: false,
+        error:
+          "Registre las compras desde Gastos → Registrar compra para reventa. Allí se generan las entradas automáticamente."
+      });
+    }
     const {
   fecha,
   categoria,
@@ -117,12 +124,6 @@ const sedeFinal = sede === "MONASTERIO" ? "MONASTERIO" : "TIENDITA";
     }
 
     // ⭐ ACTUALIZAR PRODUCTO SEGÚN EL TIPO DE ENTRADA
-    if (observacion === "COMPRAS") {
-      producto.costo = Number(precioCompraFinal);
-      producto.venta = Number(precioVentaFinal);
-      await producto.save();
-    }
-
     if (observacion === "PRODUCCIÓN DEL MONASTERIO") {
       producto.costo = 0;
       producto.venta = Number(precioVentaFinal);
@@ -158,6 +159,39 @@ const sedeFinal = sede === "MONASTERIO" ? "MONASTERIO" : "TIENDITA";
 // -------------------------------------------------------------
 router.put("/:id", async (req, res) => {
   try {
+        const entradaActual = await Entrada.findById(req.params.id);
+
+    if (!entradaActual) {
+      return res.status(404).json({
+        ok: false,
+        error: "Entrada no encontrada"
+      });
+    }
+
+    if (entradaActual.cierre === "S") {
+      return res.status(409).json({
+        ok: false,
+        error: "Esta entrada pertenece a un período cerrado."
+      });
+    }
+
+    if (entradaActual.gastoId) {
+      return res.status(409).json({
+        ok: false,
+        error:
+          "Esta entrada pertenece a una compra. No puede modificarse por separado."
+      });
+    }
+    if (
+      entradaActual.observacion === "COMPRAS" ||
+      req.body.observacion === "COMPRAS"
+    ) {
+      return res.status(409).json({
+        ok: false,
+        error:
+          "Las compras no pueden modificarse desde Entradas porque afectan el costo de los productos."
+      });
+    }
     const {
   fecha,
   categoria,
@@ -223,12 +257,6 @@ const sedeFinal = sede === "MONASTERIO" ? "MONASTERIO" : "TIENDITA";
     }
 
     // ⭐ ACTUALIZAR PRODUCTO SEGÚN EL TIPO DE ENTRADA
-    if (observacion === "COMPRAS") {
-      producto.costo = Number(precioCompraFinal);
-      producto.venta = Number(precioVentaFinal);
-      await producto.save();
-    }
-
     if (observacion === "PRODUCCIÓN DEL MONASTERIO") {
       producto.costo = 0;
       producto.venta = Number(precioVentaFinal);
@@ -272,15 +300,61 @@ const sedeFinal = sede === "MONASTERIO" ? "MONASTERIO" : "TIENDITA";
 // -------------------------------------------------------------
 router.delete("/:id", async (req, res) => {
   try {
-    const eliminado = await Entrada.findByIdAndDelete(req.params.id);
+    const entrada = await Entrada.findById(req.params.id);
+
+    if (!entrada) {
+      return res.status(404).json({
+        ok: false,
+        error: "Entrada no encontrada"
+      });
+    }
+
+    if (entrada.cierre === "S") {
+      return res.status(409).json({
+        ok: false,
+        error: "Esta entrada pertenece a un período cerrado."
+      });
+    }
+
+    if (entrada.gastoId) {
+      return res.status(409).json({
+        ok: false,
+        error:
+          "Esta entrada pertenece a una compra. No puede eliminarse por separado."
+      });
+    }
+
+    if (entrada.observacion === "COMPRAS") {
+      return res.status(409).json({
+        ok: false,
+        error:
+          "Esta entrada corresponde a una compra y afecta el costo del producto. No puede eliminarse desde esta opción."
+      });
+    }
+
+    const eliminado = await Entrada.findOneAndDelete({
+      _id: entrada._id,
+      cierre: { $ne: "S" },
+      gastoId: null,
+      observacion: { $ne: "COMPRAS" }
+    });
 
     if (!eliminado) {
-      return res.status(404).json({ ok: false, error: "Entrada no encontrada" });
+      return res.status(409).json({
+        ok: false,
+        error:
+          "La entrada cambió mientras se intentaba eliminar. Actualice la lista."
+      });
     }
 
     return res.json({ ok: true });
   } catch (error) {
-    return res.status(500).json({ ok: false, error: error.message });
+    console.error("Error eliminando entrada:", error);
+
+    return res.status(500).json({
+      ok: false,
+      error: "No se pudo eliminar la entrada."
+    });
   }
 });
 

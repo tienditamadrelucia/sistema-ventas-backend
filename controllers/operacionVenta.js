@@ -181,6 +181,41 @@ async function movimientoAnterior(
   return movimiento;
 }
 
+function obtenerCostoGuardado(renglon) {
+  const resultado = {};
+
+  if (
+    renglon.origenProducto === "COMPRADO" ||
+    renglon.origenProducto === "PRODUCCION_MONASTERIO"
+  ) {
+    resultado.origenProducto = renglon.origenProducto;
+  }
+
+  if (
+    typeof renglon.costoUnitarioUSD === "number" &&
+    Number.isFinite(renglon.costoUnitarioUSD) &&
+    renglon.costoUnitarioUSD >= 0
+  ) {
+    resultado.costoUnitarioUSD = renglon.costoUnitarioUSD;
+  }
+
+  return resultado;
+}
+
+function fechaActualVenezuela() {
+  const partes = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/Caracas",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).formatToParts(new Date());
+
+  const obtener = (tipo) =>
+    partes.find((parte) => parte.type === tipo).value;
+
+  return `${obtener("year")}-${obtener("month")}-${obtener("day")}`;
+}
+
 export async function guardarOperacionCompleta(req, res) {
   try {
     const session = req.cajaMongo;
@@ -295,6 +330,45 @@ export async function guardarOperacionCompleta(req, res) {
       );
     }
 
+        // Leer los costos antes de borrar los renglones anteriores.
+    const costosAnteriores = new Map();
+
+    if (venta) {
+      const anteriores = await Vendidos.find({
+        factura: venta.factura,
+        ...porSede(sede)
+      })
+        .session(session)
+        .lean();
+
+      for (const renglon of anteriores) {
+        const productoId = String(renglon.productoId);
+        const costo = obtenerCostoGuardado(renglon);
+
+        if (costosAnteriores.has(productoId)) {
+          const anterior = costosAnteriores.get(productoId);
+
+          if (
+            anterior.origenProducto !== costo.origenProducto ||
+            anterior.costoUnitarioUSD !== costo.costoUnitarioUSD
+          ) {
+            throw fallo(
+              409,
+              "La factura contiene el mismo producto con costos históricos distintos. Debe revisarse antes de reemplazar sus renglones."
+            );
+          }
+        }
+
+        costosAnteriores.set(productoId, costo);
+      }
+    }
+
+    const esVentaNueva = !venta;
+
+    const puedeTomarCostoActual =
+      esVentaNueva &&
+      diaComercial(fecha) === fechaActualVenezuela();
+
     const lineas = [];
     let subtotal = 0;
 
@@ -380,7 +454,33 @@ export async function guardarOperacionCompleta(req, res) {
 
       montoParticipacion = redondear(montoParticipacion);
 
+            let datosCosto = {};
+
+      const productoIdTexto = String(producto._id);
+
+      if (costosAnteriores.has(productoIdTexto)) {
+        // Al editar, conservar el costo que ya tenía la venta.
+        // Si antes no tenía costo, continúa como desconocido.
+        datosCosto = costosAnteriores.get(productoIdTexto);
+      } else if (puedeTomarCostoActual) {
+        datosCosto.origenProducto =
+          producto.origen || "COMPRADO";
+
+        if (datosCosto.origenProducto === "COMPRADO") {
+          const costo = producto.costo;
+
+          if (
+            typeof costo === "number" &&
+            Number.isFinite(costo) &&
+            costo > 0
+          ) {
+            datosCosto.costoUnitarioUSD = costo;
+          }
+        }
+      }
+
       lineas.push({
+        ...datosCosto,
         productoId: producto._id,
         cantidad,
         precio,

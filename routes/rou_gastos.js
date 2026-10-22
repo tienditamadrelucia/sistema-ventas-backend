@@ -1,7 +1,22 @@
 import express from "express";
 import dbGastos from "../models/dbGastos.js";
+import { guardarCompraReventa } from "../controllers/compraReventa.js";
+import {
+  protegerEscrituras
+} from "../utils/controlCaja.js";
 
 const router = express.Router();
+
+router.post(
+  "/compra-reventa",
+  protegerEscrituras(async (req) => [
+    {
+      fecha: req.body.fecha,
+      sede: req.body.sede
+    }
+  ]),
+  guardarCompraReventa
+);
 
 const CLASIFICACIONES_VALIDAS = [
   "SIN_CLASIFICAR",
@@ -60,6 +75,16 @@ const prepararClasificacion = (body) => {
 // ==========================================
 router.post("/", async (req, res) => {
   try {
+        if (
+      req.body.clasificacion === "COMPRA_REVENTA" ||
+      Object.prototype.hasOwnProperty.call(req.body, "compraReventa")
+    ) {
+      return res.status(400).json({
+        ok: false,
+        mensaje:
+          "Las compras para reventa deben guardarse mediante el formulario de compras."
+      });
+    }
     let { numeroRecibo, sede = "TIENDITA" } = req.body;
 
     sede = sede === "MONASTERIO" ? "MONASTERIO" : "TIENDITA";
@@ -275,6 +300,35 @@ router.put("/:id", async (req, res) => {
       });
     }
 
+        if (gastoActual.cierre === "S") {
+      return res.status(409).json({
+        ok: false,
+        mensaje: "Este gasto pertenece a un período cerrado."
+      });
+    }
+
+    if (
+      gastoActual.compraReventa ||
+      gastoActual.clasificacion === "COMPRA_REVENTA"
+    ) {
+      return res.status(409).json({
+        ok: false,
+        mensaje:
+          "Esta compra tiene entradas y costos asociados. No puede editarse como un gasto común."
+      });
+    }
+
+    if (
+      req.body.clasificacion === "COMPRA_REVENTA" ||
+      Object.prototype.hasOwnProperty.call(req.body, "compraReventa")
+    ) {
+      return res.status(400).json({
+        ok: false,
+        mensaje:
+          "No puede convertir un gasto existente en una compra desde esta opción."
+      });
+    }
+
     const sede = gastoActual.sede === "MONASTERIO"
       ? "MONASTERIO"
       : "TIENDITA";
@@ -347,25 +401,55 @@ router.put("/:id", async (req, res) => {
 // ==========================================
 router.delete("/:id", async (req, res) => {
   try {
-    const gasto = await dbGastos.findByIdAndDelete(req.params.id);
+    const gasto = await dbGastos.findById(req.params.id);
 
     if (!gasto) {
       return res.status(404).json({
         ok: false,
-        error: "Gasto no encontrado"
+        mensaje: "Gasto no encontrado"
       });
     }
 
-    res.json({
-      ok: true
+    if (gasto.cierre === "S") {
+      return res.status(409).json({
+        ok: false,
+        mensaje: "Este gasto pertenece a un período cerrado."
+      });
+    }
+
+    if (
+      gasto.compraReventa ||
+      gasto.clasificacion === "COMPRA_REVENTA"
+    ) {
+      return res.status(409).json({
+        ok: false,
+        mensaje:
+          "Esta compra tiene entradas y costos asociados. No puede eliminarse como un gasto común."
+      });
+    }
+
+    const eliminado = await dbGastos.findOneAndDelete({
+      _id: gasto._id,
+      cierre: { $ne: "S" },
+      clasificacion: { $ne: "COMPRA_REVENTA" },
+      compraReventa: null
     });
 
+    if (!eliminado) {
+      return res.status(409).json({
+        ok: false,
+        mensaje:
+          "El gasto cambió mientras se intentaba eliminar. Actualice la lista."
+      });
+    }
+
+    return res.json({ ok: true });
   } catch (error) {
     console.error("Error eliminando gasto:", error);
 
-    res.status(500).json({
+    return res.status(500).json({
       ok: false,
-      error: "Error eliminando gasto"
+      mensaje: "No se pudo eliminar el gasto."
     });
   }
 });
