@@ -2,6 +2,10 @@
 // REGISTRAR MOVIMIENTO DE MONEDA
 import express from "express";
 import Moneda from "../models/dbMoneda.js";
+import {
+  fallo,
+  responderFallo
+} from "../utils/controlCaja.js";
 
 import {
   protegerMoneda
@@ -285,6 +289,24 @@ router.get("/:id", async (req, res) => {
 // =====================================================
 router.put("/:id", async (req, res) => {
   try {
+        const original = await Moneda.findById(req.params.id)
+      .session(req.cajaMongo);
+
+    if (!original) {
+      throw fallo(404, "Movimiento no encontrado.");
+    }
+
+    if (
+      original.operacion === "ABONO DE CREDITO" &&
+      req.body.operacion !== undefined &&
+      req.body.operacion !== original.operacion
+    ) {
+      return res.status(409).json({
+        ok: false,
+        mensaje:
+          "No puede cambiar el tipo de un abono de crédito."
+      });
+    }
     const actualizado = await Moneda.findByIdAndUpdate(
       req.params.id,
       req.body,
@@ -317,19 +339,103 @@ router.put("/:id", async (req, res) => {
 // =====================================================
 router.delete("/:id", async (req, res) => {
   try {
-    const eliminado = await Moneda.findByIdAndDelete(
-      req.params.id
-    ).session(req.cajaMongo);
+    const session = req.cajaMongo;
+
+    if (!session?.inTransaction()) {
+      throw fallo(
+        500,
+        "Falta la protección transaccional."
+      );
+    }
+
+    const movimiento = await Moneda.findById(req.params.id)
+      .session(session);
+
+    if (!movimiento) {
+      throw fallo(404, "Movimiento no encontrado.");
+    }
+
+    if (movimiento.operacion === "ABONO DE CREDITO") {
+      if (req.usuarioCaja?.rol !== "ADMINISTRADOR") {
+        throw fallo(
+          403,
+          "Solo el administrador puede eliminar abonos."
+        );
+      }
+
+      const sedeMovimiento =
+        movimiento.sede || "TIENDITA";
+
+      const facturaSolicitada = Number(req.query.factura);
+
+      if (
+        !Number.isSafeInteger(facturaSolicitada) ||
+        facturaSolicitada !== movimiento.factura ||
+        req.query.sede !== sedeMovimiento
+      ) {
+        throw fallo(
+          409,
+          "El abono no corresponde a la factura y sede consultadas."
+        );
+      }
+
+      // Si hay un vuelto ese día, no podemos determinar
+      // automáticamente si pertenece a este abono.
+      const inicio = new Date(movimiento.fecha);
+
+      inicio.setUTCHours(0, 0, 0, 0);
+
+      const fin = new Date(inicio);
+      fin.setUTCDate(fin.getUTCDate() + 1);
+
+      const filtroSede =
+        sedeMovimiento === "MONASTERIO"
+          ? { sede: "MONASTERIO" }
+          : {
+              $or: [
+                { sede: "TIENDITA" },
+                { sede: { $exists: false } }
+              ]
+            };
+
+      const vuelto = await Moneda.exists({
+        factura: movimiento.factura,
+        operacion: "VUELTOS",
+        fecha: {
+          $gte: inicio,
+          $lt: fin
+        },
+        ...filtroSede
+      }).session(session);
+
+      if (vuelto) {
+        throw fallo(
+          409,
+          "Esta factura tiene un vuelto registrado el mismo día. Debe revisarse junto con el abono antes de eliminarlo."
+        );
+      }
+    }
+
+    const eliminado = await Moneda.findOneAndDelete({
+      _id: movimiento._id,
+      operacion: movimiento.operacion,
+      factura: movimiento.factura
+    }).session(session);
+
+    if (!eliminado) {
+      throw fallo(
+        409,
+        "El movimiento cambió. Actualice la consulta."
+      );
+    }
 
     return res.json({
       ok: true,
+      mensaje: "Movimiento eliminado correctamente",
       eliminado
     });
   } catch (error) {
-    return res.status(500).json({
-      ok: false,
-      mensaje: error.message
-    });
+    return responderFallo(res, error);
   }
 });
 
