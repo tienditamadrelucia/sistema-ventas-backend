@@ -3,6 +3,25 @@ import Tasas from "../models/dbTasas.js";
 
 const router = express.Router();
 
+function filtroPorSede(sede) {
+  if (sede === "MONASTERIO") {
+    return { sede: "MONASTERIO" };
+  }
+
+  if (sede === "TIENDITA") {
+    return {
+      $or: [
+        { sede: "TIENDITA" },
+        { sede: { $exists: false } }
+      ]
+    };
+  }
+
+  const error = new Error("Sede inválida.");
+  error.status = 400;
+  throw error;
+}
+
 // ======================================================
 // NORMALIZAR FECHA
 // Las fechas YYYY-MM-DD se conservan exactamente.
@@ -98,10 +117,10 @@ router.get("/hoy", async (req, res) => {
     const fin = new Date(inicio.getTime() + 24 * 60 * 60 * 1000);
 
     const tasa = await Tasas.findOne({
-      sede,
+    ...filtroPorSede(sede),
       fecha: {
-        $gte: inicio,
-        $lt: fin
+      $gte: inicio,
+      $lt: fin
       }
     });
 
@@ -132,8 +151,8 @@ router.post("/guardar", async (req, res) => {
     const fecha = normalizarUTC(req.body.fecha);
 
     const existe = await Tasas.findOne({
-      sede,
-      fecha: {
+      ...filtroPorSede(sede),
+        fecha: {
         $gte: fecha,
         $lt: new Date(fecha.getTime() + 86400000)
       }
@@ -193,9 +212,16 @@ router.put("/modificar/:id", async (req, res) => {
     tasa.tasaP = req.body.tasaP;
     tasa.tasaD = req.body.tasaD;
 
-    if (req.body.sede) {
-      tasa.sede = req.body.sede;
-    }
+    if (
+      req.body.sede &&
+      req.body.sede !== (tasa.sede || "TIENDITA")
+      ) {
+      return res.status(400).json({
+        ok: false,
+        mensaje:
+          "No puede cambiar la sede de una tasa existente."
+        });
+      }
 
     await tasa.save();
 
@@ -225,9 +251,9 @@ router.get("/todas", async (req, res) => {
 
     const sede = req.query.sede || "TIENDITA";
 
-    const lista = await Tasas.find({
-      sede
-    }).sort({
+    const lista = await Tasas.find(
+      filtroPorSede(sede)
+      ).sort({
       fecha: -1
     });
 
@@ -268,8 +294,8 @@ router.get("/por-fecha/:fecha", async (req, res) => {
     );
 
     const tasa = await Tasas.findOne({
-      sede,
-      fecha: {
+      ...filtroPorSede(sede),
+        fecha: {
         $gte: inicio,
         $lt: fin
       }
