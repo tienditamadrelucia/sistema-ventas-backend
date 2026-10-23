@@ -197,47 +197,114 @@ router.post("/guardar", async (req, res) => {
 
 router.put("/modificar/:id", async (req, res) => {
   try {
-
     const tasa = await Tasas.findById(req.params.id);
 
     if (!tasa) {
-      return res.json({
+      return res.status(404).json({
         ok: false,
-        mensaje: "No existen tasas para hoy"
+        mensaje: "No se encontró la tasa que intenta modificar."
       });
     }
 
-    tasa.cajachicaP = req.body.cajachicaP;
-    tasa.cajachicaD = req.body.cajachicaD;
-    tasa.tasaP = req.body.tasaP;
-    tasa.tasaD = req.body.tasaD;
+    const fechaSolicitada = req.body.fecha;
 
     if (
-      req.body.sede &&
-      req.body.sede !== (tasa.sede || "TIENDITA")
-      ) {
+      typeof fechaSolicitada !== "string" ||
+      !/^\d{4}-\d{2}-\d{2}$/.test(fechaSolicitada)
+    ) {
       return res.status(400).json({
         ok: false,
+        mensaje: "Debe enviar la fecha en formato YYYY-MM-DD."
+      });
+    }
+
+    const fechaValidada = new Date(
+      `${fechaSolicitada}T00:00:00.000Z`
+    );
+
+    if (
+      !Number.isFinite(fechaValidada.getTime()) ||
+      fechaValidada.toISOString().slice(0, 10) !== fechaSolicitada
+    ) {
+      return res.status(400).json({
+        ok: false,
+        mensaje: "La fecha enviada no es válida."
+      });
+    }
+
+    const fechaGuardada = tasa.fecha.toISOString().slice(0, 10);
+    const sedeGuardada = tasa.sede || "TIENDITA";
+
+    if (
+      fechaSolicitada !== fechaGuardada ||
+      (
+        req.body.sede !== undefined &&
+        req.body.sede !== sedeGuardada
+      )
+    ) {
+      return res.status(409).json({
+        ok: false,
         mensaje:
-          "No puede cambiar la sede de una tasa existente."
+          "La tasa seleccionada corresponde a otra fecha o sede. Recargue la pantalla. No se modificó ningún registro."
+      });
+    }
+
+    const campos = [
+      "cajachicaP",
+      "cajachicaD",
+      "tasaP",
+      "tasaD"
+    ];
+
+    const valores = {};
+
+    for (const campo of campos) {
+      const recibido = req.body[campo];
+
+      if (
+        !["string", "number"].includes(typeof recibido) ||
+        String(recibido).trim() === ""
+      ) {
+        return res.status(400).json({
+          ok: false,
+          mensaje: "Complete todos los valores."
         });
       }
 
+      const valor = Number(recibido);
+      const esTasa = campo === "tasaP" || campo === "tasaD";
+
+      if (
+        !Number.isFinite(valor) ||
+        (esTasa ? valor <= 0 : valor < 0)
+      ) {
+        return res.status(400).json({
+          ok: false,
+          mensaje:
+            "Las tasas deben ser mayores que cero y la caja chica no puede ser negativa."
+        });
+      }
+
+      valores[campo] = valor;
+    }
+
+    tasa.set(valores);
+
+    // La fecha y la sede del registro no se cambian.
     await tasa.save();
 
     return res.json({
       ok: true,
-      mensaje: "Tasas modificadas",
+      mensaje: "Tasas modificadas.",
       tasa
     });
-
   } catch (error) {
+    console.error("Error modificando tasas:", error);
 
     return res.status(500).json({
       ok: false,
-      error: error.message
+      mensaje: "No se pudieron modificar las tasas."
     });
-
   }
 });
 
