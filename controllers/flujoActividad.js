@@ -461,44 +461,34 @@ export function construirFlujo({
 
   // GASTOS: INCLUIR TODAS LAS CLASIFICACIONES
   for (const gasto of gastos) {
-    const codigo = texto(gasto.moneda)
-      .replace(/\./g, "");
+  const codigo = texto(gasto.moneda).replace(/\./g, "");
 
-    let moneda = null;
+  const moneda =
+    ["D", "USD", "$", "US$", "DOLAR", "DOLARES"].includes(codigo)
+      ? "D"
+      : ["P", "COP", "PESO", "PESOS"].includes(codigo)
+      ? "P"
+      : ["BS", "VES", "BOLIVAR", "BOLIVARES"].includes(codigo)
+      ? "Bs"
+      : null;
 
-    if (
-      ["D", "USD", "$", "US$", "DOLAR", "DOLARES"]
-        .includes(codigo)
-    ) {
-      moneda = "D";
-    } else if (
-      ["P", "COP", "PESO", "PESOS"].includes(codigo)
-    ) {
-      moneda = "P";
-    } else if (
-      ["BS", "VES", "BOLIVAR", "BOLIVARES"]
-        .includes(codigo)
-    ) {
-      moneda = "Bs";
-    }
+  if (!moneda) {
+    throw fallo(
+      422,
+      `Moneda desconocida en el gasto ${id(gasto)}: ${gasto.moneda}`
+    );
+  }
 
-    if (!moneda) {
-      throw fallo(
-        422,
-        `Moneda desconocida en el gasto ${id(gasto)}: ${gasto.moneda}`
-      );
-    }
+  const totalGasto = centimos(
+    gasto.monto,
+    `gasto ${id(gasto)}`
+  );
 
+  const registrarGasto = (actividadId, importe) => {
     const valores = cero();
+    valores[moneda] = importe;
 
-    valores[moneda] = centimos(
-      gasto.monto,
-      `gasto ${id(gasto)}`
-    );
-
-    const destino = grupo(
-      id(gasto.actividadProductiva)
-    );
+    const destino = grupo(actividadId);
 
     sumar(destino.gastos, valores);
 
@@ -508,12 +498,92 @@ export function construirFlujo({
       sede: sedeDe(gasto),
       descripcion: gasto.descripcion,
       numeroRecibo: gasto.numeroRecibo || "",
-      clasificacion:
-        gasto.clasificacion || "SIN_CLASIFICAR",
+      clasificacion: gasto.clasificacion || "SIN_CLASIFICAR",
       moneda,
-      monto: valores[moneda]
+      monto: importe
     });
+  };
+
+  const esCompra =
+    gasto.clasificacion === "COMPRA_REVENTA" ||
+    Boolean(gasto.compraReventa);
+
+  // GASTOS NORMALES
+  if (!esCompra) {
+    registrarGasto(
+      id(gasto.actividadProductiva),
+      totalGasto
+    );
+
+    continue;
   }
+
+  // COMPRAS PARA REVENTA
+  const detalles = gasto.compraReventa?.detalles;
+
+  if (!Array.isArray(detalles) || detalles.length === 0) {
+    aviso(
+      "COMPRA_SIN_DETALLE",
+      "Hay compras sin detalle de productos; su importe se muestra en Sin actividad asignada."
+    );
+
+    registrarGasto("", totalGasto);
+    continue;
+  }
+
+  const asignaciones = new Map();
+  let totalDetalles = 0;
+
+  for (const detalle of detalles) {
+    // Usar el subtotal en la moneda original de la compra.
+    const importe = centimos(
+      detalle.subtotalMoneda,
+      `detalle de compra del gasto ${id(gasto)}`
+    );
+
+    if (importe < 0) {
+      throw fallo(
+        422,
+        `Hay un subtotal negativo en la compra ${id(gasto)}`
+      );
+    }
+
+    totalDetalles += importe;
+
+    if (!Number.isSafeInteger(totalDetalles)) {
+      throw fallo(
+        422,
+        "Los detalles de una compra exceden el rango permitido"
+      );
+    }
+
+    // Usar la actividad guardada al comprar.
+    // No sustituirla por la actividad actual del producto.
+    const actividadId =
+      id(detalle.actividadProductiva) || sinActividad;
+
+    asignaciones.set(
+      actividadId,
+      (asignaciones.get(actividadId) || 0) + importe
+    );
+  }
+
+  // Comprobar que el detalle coincide con el único gasto.
+  if (totalDetalles !== totalGasto) {
+    aviso(
+      "COMPRA_DESCUADRADA",
+      "Hay compras cuyo detalle no coincide con el total del gasto; el importe completo se muestra en Sin actividad asignada para su revisión."
+    );
+
+    registrarGasto("", totalGasto);
+    continue;
+  }
+
+  // Asignar cada parte a su actividad sin duplicar el gasto.
+  for (const [actividadId, importe] of asignaciones) {
+    registrarGasto(actividadId, importe);
+  }
+}
 
   const convertir = valores =>
     Object.fromEntries(
