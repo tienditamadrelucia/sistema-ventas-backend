@@ -129,7 +129,16 @@ router.post("/", async (req, res) => {
 
     const gastoGuardado = await dbGastos
       .findById(nuevo._id)
-      .populate("actividadProductiva", "descripcion activa");
+      .populate([
+  {
+    path: "actividadProductiva",
+    select: "descripcion activa"
+  },
+  {
+    path: "compraReventa.detalles.actividadProductiva",
+    select: "descripcion activa"
+  }
+])
 
     res.json({
       ok: true,
@@ -157,7 +166,16 @@ router.get("/", async (req, res) => {
 
     const lista = await dbGastos
       .find(filtroPorSede(sede))
-      .populate("actividadProductiva", "descripcion activa")
+      .populate([
+  {
+    path: "actividadProductiva",
+    select: "descripcion activa"
+  },
+  {
+    path: "compraReventa.detalles.actividadProductiva",
+    select: "descripcion activa"
+  }
+])
       .sort({ fecha: -1 });
 
     res.json({
@@ -202,7 +220,16 @@ router.get("/reporte", async (req, res) => {
         fecha: { $gte: inicio, $lte: fin },
         ...filtroPorSede(sede)
       })
-      .populate("actividadProductiva", "descripcion activa")
+      .populate([
+  {
+    path: "actividadProductiva",
+    select: "descripcion activa"
+  },
+  {
+    path: "compraReventa.detalles.actividadProductiva",
+    select: "descripcion activa"
+  }
+])
       .sort({ fecha: 1 });
 
     res.json(gastos);
@@ -238,7 +265,16 @@ router.get("/gastos/:dia", async (req, res) => {
         cajaChica: true,
         ...filtroPorSede(sede)
       })
-      .populate("actividadProductiva", "descripcion activa");
+      .populate([
+  {
+    path: "actividadProductiva",
+    select: "descripcion activa"
+  },
+  {
+    path: "compraReventa.detalles.actividadProductiva",
+    select: "descripcion activa"
+  }
+])
 
     return res.json({
       ok: true,
@@ -262,7 +298,16 @@ router.get("/:id", async (req, res) => {
   try {
     const gasto = await dbGastos
       .findById(req.params.id)
-      .populate("actividadProductiva", "descripcion activa");
+      .populate([
+  {
+    path: "actividadProductiva",
+    select: "descripcion activa"
+  },
+  {
+    path: "compraReventa.detalles.actividadProductiva",
+    select: "descripcion activa"
+  }
+])
 
     if (!gasto) {
       return res.status(404).json({
@@ -379,7 +424,16 @@ router.put("/:id", async (req, res) => {
           runValidators: true
         }
       )
-      .populate("actividadProductiva", "descripcion activa");
+      .populate([
+  {
+    path: "actividadProductiva",
+    select: "descripcion activa"
+  },
+  {
+    path: "compraReventa.detalles.actividadProductiva",
+    select: "descripcion activa"
+  }
+])
 
     res.json({
       ok: true,
