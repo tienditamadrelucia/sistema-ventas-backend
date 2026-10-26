@@ -18,6 +18,9 @@ import {
   revisionDia,
   claveDia
 } from "../utils/transaccionCaja.js";
+import {
+  obtenerRevisionDiaria
+} from "../controllers/revisionDiaria.js";
 
 const router = express.Router();
 
@@ -355,6 +358,9 @@ router.post("/", async (req, res) => {
     return responderFallo(res, error);
   }
 });
+
+
+router.get("/revision-diaria", obtenerRevisionDiaria);
 
 // =====================================================
 // CONSULTAR CAJA POR FECHA Y SEDE
