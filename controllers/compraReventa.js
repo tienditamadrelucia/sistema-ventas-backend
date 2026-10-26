@@ -13,6 +13,10 @@ import {
   fallo,
   responderFallo
 } from "../utils/controlCaja.js";
+import {
+  calcularImportesCompra,
+  normalizarCargos
+} from "../utils/calculoCompraReventa.js";
 
 const porSede = (sede) =>
   sede === "MONASTERIO"
@@ -69,13 +73,17 @@ function firmaCompra(datos) {
     numeroRecibo: datos.numeroRecibo || "",
     cajaChica: datos.cajaChica,
     tasaCambio: datos.tasaCambio,
+    cargos: normalizarCargos(datos.cargos),
+
     detalles: datos.detalles
       .map((detalle) => ({
         productoId: String(detalle.productoId),
         cantidad: detalle.cantidad,
         costoUnitarioMoneda: detalle.costoUnitarioMoneda
       }))
-      .sort((a, b) => a.productoId.localeCompare(b.productoId))
+      .sort((a, b) =>
+        a.productoId.localeCompare(b.productoId)
+      )
   });
 }
 
@@ -283,16 +291,24 @@ export async function guardarCompraReventa(req, res) {
         ? ""
         : String(body.numeroRecibo).trim();
 
-    const solicitud = {
-      fecha,
-      sede,
-      descripcion: body.descripcion.trim(),
-      moneda: body.moneda,
-      numeroRecibo,
-      cajaChica: body.cajaChica,
-      tasaCambio,
-      detalles: detallesSolicitados
-    };
+    const cargosSolicitados = normalizarCargos(body.cargos);
+
+const calculoCompra = calcularImportesCompra(
+  detallesSolicitados,
+  cargosSolicitados
+);
+
+const solicitud = {
+  fecha,
+  sede,
+  descripcion: body.descripcion.trim(),
+  moneda: body.moneda,
+  numeroRecibo,
+  cajaChica: body.cajaChica,
+  tasaCambio,
+  detalles: detallesSolicitados,
+  cargos: cargosSolicitados
+};
 
     // La misma operación genera siempre el mismo ID.
     const hash = createHash("sha256")
@@ -315,7 +331,8 @@ export async function guardarCompraReventa(req, res) {
       const firmaExistente = firmaCompra({
         ...existente,
         tasaCambio: existente.compraReventa.tasaCambio,
-        detalles: existente.compraReventa.detalles
+        detalles: existente.compraReventa.detalles,
+        cargos: existente.compraReventa.cargos || []
       });
 
       if (firmaExistente !== firmaCompra(solicitud)) {
@@ -371,10 +388,10 @@ export async function guardarCompraReventa(req, res) {
     const detalles = [];
     const entradasNuevas = [];
 
-    let totalMoneda = 0;
     let totalUSD = 0;
+    let totalCostoUSD = 0;
 
-    for (const linea of detallesSolicitados) {
+    for (const linea of calculoCompra.detalles) {
       const producto = await Producto.findOne({
         _id: linea.productoId,
         ...porSede(sede)
@@ -443,57 +460,76 @@ export async function guardarCompraReventa(req, res) {
         );
       }
 
-      const subtotalMoneda = redondear(
-        linea.cantidad * linea.costoUnitarioMoneda,
-        2
-      );
+      const subtotalMoneda = linea.subtotalMoneda;
 
-      if (subtotalMoneda <= 0) {
-        throw fallo(400, "El importe de cada producto debe ser mayor que cero.");
-      }
+const costoTotalMoneda = linea.costoTotalMoneda;
 
-      const subtotalUSD = redondear(subtotalMoneda / tasaCambio);
+// Importe pagado por este producto, incluidos todos los cargos.
+const subtotalUSD = redondear(
+  subtotalMoneda / tasaCambio
+);
 
-      if (subtotalUSD <= 0) {
-        throw fallo(400, "El equivalente en dólares es demasiado pequeño.");
-      }
+// Importe que realmente se incorpora al inventario.
+const costoTotalUSD = redondear(
+  costoTotalMoneda / tasaCambio
+);
 
-      const costoUnitarioUSD = redondear(
-        subtotalUSD / linea.cantidad
-      );
+const costoUnitarioUSD = redondear(
+  costoTotalUSD / linea.cantidad
+);
 
-            if (
-        !Number.isFinite(costoUnitarioUSD) ||
-        costoUnitarioUSD <= 0
-      ) {
-        throw fallo(
-          400,
-          "El costo unitario en dólares es demasiado pequeño. Revise la cantidad y la tasa."
-        );
-      }
-      
-      const costoPromedio = redondear(
-        (
-          existencias * (existencias > 0 ? costoAnterior : 0) +
-          subtotalUSD
-        ) /
-        (existencias + linea.cantidad)
-      );
+if (
+  !Number.isFinite(subtotalUSD) ||
+  subtotalUSD <= 0 ||
+  !Number.isFinite(costoTotalUSD) ||
+  costoTotalUSD <= 0 ||
+  !Number.isFinite(costoUnitarioUSD) ||
+  costoUnitarioUSD <= 0
+) {
+  throw fallo(
+    400,
+    "El equivalente en dólares es inválido o demasiado pequeño. Revise los importes y la tasa."
+  );
+}
+
+// El promedio incluye únicamente los cargos
+// marcados para incorporarse al costo.
+const costoPromedio = redondear(
+  (
+    existencias *
+      (existencias > 0 ? costoAnterior : 0) +
+    costoTotalUSD
+  ) /
+  (existencias + linea.cantidad)
+);
 
       const entradaId = new mongoose.Types.ObjectId();
 
       detalles.push({
-        productoId: producto._id,
-        codigo: producto.codigo,
-        descripcion: producto.descripcion,
-        actividadProductiva: producto.actividadProductiva || null,
-        cantidad: linea.cantidad,
-        costoUnitarioMoneda: linea.costoUnitarioMoneda,
-        subtotalMoneda,
-        costoUnitarioUSD,
-        subtotalUSD,
-        entradaId
-      });
+      productoId: producto._id,
+      codigo: producto.codigo,
+      descripcion: producto.descripcion,
+      actividadProductiva: producto.actividadProductiva || null,
+      cantidad: linea.cantidad,
+
+      // Precio original, antes de cargos.
+      costoUnitarioMoneda: linea.costoUnitarioMoneda,
+
+      subtotalBaseMoneda: linea.subtotalBaseMoneda,
+      cargosCostoMoneda: linea.cargosCostoMoneda,
+      cargosNoCostoMoneda: linea.cargosNoCostoMoneda,
+
+      // Total pagado: permite distribuir el gasto por actividad.
+      subtotalMoneda,
+      subtotalUSD,
+
+      // Costo final del inventario.
+      costoTotalMoneda,
+      costoTotalUSD,
+      costoUnitarioUSD,
+
+      entradaId
+    });
 
       entradasNuevas.push({
         _id: entradaId,
@@ -517,8 +553,8 @@ export async function guardarCompraReventa(req, res) {
       producto.costo = costoPromedio;
       await producto.save({ session });
 
-      totalMoneda += subtotalMoneda;
       totalUSD += subtotalUSD;
+      totalCostoUSD += costoTotalUSD;
     }
 
     const [gasto] = await Gastos.create(
@@ -531,7 +567,7 @@ export async function guardarCompraReventa(req, res) {
           clasificacion: "COMPRA_REVENTA",
           actividadProductiva: null,
           moneda: body.moneda,
-          monto: redondear(totalMoneda, 2),
+          monto: calculoCompra.totalMoneda,
           numeroRecibo: numeroRecibo || null,
           cajaChica: body.cajaChica,
           usuario: String(req.usuarioCaja._id),
@@ -539,7 +575,23 @@ export async function guardarCompraReventa(req, res) {
           compraReventa: {
             claveOperacion: body.claveOperacion,
             tasaCambio,
+
+            subtotalProductosMoneda:
+            calculoCompra.subtotalProductosMoneda,
+
+            totalCargosMoneda:
+            calculoCompra.totalCargosMoneda,
+
+            cargosCostoMoneda:
+            calculoCompra.cargosCostoMoneda,
+
+            cargosNoCostoMoneda:
+            calculoCompra.cargosNoCostoMoneda,
+
             totalUSD: redondear(totalUSD),
+            totalCostoUSD: redondear(totalCostoUSD),
+
+            cargos: calculoCompra.cargos,
             detalles
           }
         }

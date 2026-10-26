@@ -1,5 +1,51 @@
 import mongoose from "mongoose";
 
+const cargoCompraSchema = new mongoose.Schema(
+  {
+    concepto: {
+      type: String,
+      required: true,
+      trim: true
+    },
+
+    tipo: {
+      type: String,
+      enum: ["PORCENTAJE", "MONTO"],
+      required: true
+    },
+
+    valor: {
+      type: Number,
+      required: true,
+      min: 0
+    },
+
+    // SUBTOTAL: solo los productos.
+    // TOTAL_ACUMULADO: productos y cargos anteriores.
+    baseCalculo: {
+      type: String,
+      enum: ["SUBTOTAL", "TOTAL_ACUMULADO"],
+      default: "SUBTOTAL"
+    },
+
+    incorporaCosto: {
+      type: Boolean,
+      default: true
+    },
+
+    // Importe calculado por el servidor
+    // en la moneda original de la compra.
+    montoMoneda: {
+      type: Number,
+      required: true,
+      min: 0
+    }
+  },
+  {
+    _id: false
+  }
+);
+
 const detalleCompraSchema = new mongoose.Schema(
   {
     productoId: {
@@ -56,6 +102,40 @@ const detalleCompraSchema = new mongoose.Schema(
       min: 0
     },
 
+        // Importe del producto antes de impuestos y recargos.
+    subtotalBaseMoneda: {
+      type: Number,
+      min: 0,
+      default: undefined
+    },
+
+    // Parte de los cargos que aumenta el costo del producto.
+    cargosCostoMoneda: {
+      type: Number,
+      min: 0,
+      default: undefined
+    },
+
+    // Parte pagada que no se incorpora al costo.
+    cargosNoCostoMoneda: {
+      type: Number,
+      min: 0,
+      default: undefined
+    },
+
+    // Base más los cargos incorporados al costo.
+    costoTotalMoneda: {
+      type: Number,
+      min: 0,
+      default: undefined
+    },
+
+    costoTotalUSD: {
+      type: Number,
+      min: 0,
+      default: undefined
+    },
+
     entradaId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Entrada",
@@ -90,6 +170,41 @@ const compraReventaSchema = new mongoose.Schema(
       min: 0
     },
 
+        subtotalProductosMoneda: {
+      type: Number,
+      min: 0,
+      default: undefined
+    },
+
+    totalCargosMoneda: {
+      type: Number,
+      min: 0,
+      default: undefined
+    },
+
+    cargosCostoMoneda: {
+      type: Number,
+      min: 0,
+      default: undefined
+    },
+
+    cargosNoCostoMoneda: {
+      type: Number,
+      min: 0,
+      default: undefined
+    },
+
+    totalCostoUSD: {
+      type: Number,
+      min: 0,
+      default: undefined
+    },
+
+    cargos: {
+      type: [cargoCompraSchema],
+      default: undefined
+    },
+    
     detalles: {
       type: [detalleCompraSchema],
       required: true,
