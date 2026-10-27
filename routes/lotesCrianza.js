@@ -15,6 +15,7 @@ import ProduccionPollo from "../models/ProduccionPollo.js";
 import {
   registrarProduccionPollo
 } from "../controllers/produccionPollo.js";
+import Gastos from "../models/dbGastos.js";
 
 const router = express.Router();
 
@@ -237,6 +238,19 @@ router.delete("/:id", async (req, res) => {
           "El lote no existe o ya fue eliminado."
         );
         error.estado = 404;
+        throw error;
+      }
+
+      const tieneGastos = await Gastos.exists({
+        "asignacionesLotes.loteId": lote._id
+        }).session(session);
+
+        if (tieneGastos) {
+          const error = new Error(
+          "No se puede eliminar el lote porque tiene gastos asignados."
+        );
+
+        error.estado = 409;
         throw error;
       }
 
