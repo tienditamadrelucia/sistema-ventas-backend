@@ -187,7 +187,9 @@ function firma(datos) {
     observaciones: datos.observaciones || "",
     detalles: normalizarDetalles(datos.detalles),
 
-    control: datos.versionControl === 1
+    control:
+      datos.pesoControlKg !== undefined ||
+      datos.mermasKg !== undefined
       ? {
           pesoControlKg: numero(datos.pesoControlKg),
           mermasKg: numero(datos.mermasKg)

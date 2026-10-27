@@ -171,57 +171,85 @@ export function evaluarControlProduccion(datos = {}) {
     "muslos"
   );
 
-  const control = gramos(datos.pesoControlKg);
-  const mermas = gramos(datos.mermasKg, true);
+  const informado = (valor) =>
+  valor !== undefined &&
+  valor !== null &&
+  !(
+    typeof valor === "string" &&
+    valor.trim() === ""
+  );
 
-  const pesosCompletos =
+const controlInformado = informado(datos.pesoControlKg);
+const mermasInformadas = informado(datos.mermasKg);
+
+const control = gramos(datos.pesoControlKg);
+const mermas = gramos(datos.mermasKg, true);
+
+if (
+  mermasInformadas &&
+  !Number.isFinite(mermas)
+) {
+  errores.push(
+    "Revise las mermas: deben ser cero o positivas y tener hasta tres decimales."
+  );
+}
+
+const pesosCompletos =
+  pesosValidos &&
+  detalles.length > 0 &&
+  Number.isSafeInteger(pesoProductos) &&
+  Number.isSafeInteger(control) &&
+  Number.isSafeInteger(mermas) &&
+  Number.isSafeInteger(pesoProductos + mermas);
+
+const diferencia = pesosCompletos
+  ? control - pesoProductos - mermas
+  : null;
+
+const peso = {
+  productosKg:
     pesosValidos &&
-    detalles.length > 0 &&
-    Number.isSafeInteger(pesoProductos) &&
-    Number.isSafeInteger(control) &&
-    Number.isSafeInteger(mermas) &&
-    Number.isSafeInteger(pesoProductos + mermas);
-
-  const diferencia = pesosCompletos
-    ? control - pesoProductos - mermas
-    : null;
-
-  const peso = {
-    productosKg:
-      pesosValidos &&
-      Number.isSafeInteger(pesoProductos)
-        ? pesoProductos / 1000
-        : null,
-
-    controlKg: Number.isFinite(control)
-      ? control / 1000
+    Number.isSafeInteger(pesoProductos)
+      ? pesoProductos / 1000
       : null,
 
-    mermasKg: Number.isFinite(mermas)
-      ? mermas / 1000
-      : null,
+  controlKg: Number.isFinite(control)
+    ? control / 1000
+    : undefined,
 
-    diferenciaKg: diferencia === null
-      ? null
-      : diferencia / 1000,
+  mermasKg: Number.isFinite(mermas)
+    ? mermas / 1000
+    : undefined,
 
-    completo:
-      pesosCompletos && diferencia === 0,
+  diferenciaKg: diferencia === null
+    ? null
+    : diferencia / 1000,
 
-    mensaje: !pesosCompletos
+  pendiente: !controlInformado,
+
+  completo:
+    pesosCompletos && diferencia === 0,
+
+  mensaje: !controlInformado
+    ? "No se informó el peso global: se guardarán los kilos de cada producto sin conciliación global."
+    : !pesosCompletos
       ? "Complete los pesos de productos, control y mermas (cero si no hubo)."
       : diferencia > 0
         ? `Faltan ${(diferencia / 1000).toFixed(3)} kg por justificar.`
         : diferencia < 0
           ? `El peso registrado excede el control en ${(-diferencia / 1000).toFixed(3)} kg.`
           : "Peso conciliado: productos y mermas coinciden con el peso de control."
-  };
+};
 
-  for (const actual of [pechugas, muslos, peso]) {
-    if (!actual.completo) {
-      errores.push(actual.mensaje);
-    }
+for (const actual of [pechugas, muslos]) {
+  if (!actual.completo) {
+    errores.push(actual.mensaje);
   }
+}
+
+if (controlInformado && !peso.completo) {
+  errores.push(peso.mensaje);
+}
 
   return {
     valido: errores.length === 0,
