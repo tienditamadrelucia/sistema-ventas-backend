@@ -1,6 +1,7 @@
 import mongoose from "mongoose";
 import LoteCrianza from "../models/LoteCrianza.js";
 import BajaCrianza from "../models/BajaCrianza.js";
+import ProduccionPollo from "../models/ProduccionPollo.js";
 
 function fallo(estado, mensaje) {
   const error = new Error(mensaje);
@@ -105,15 +106,33 @@ export async function obtenerDetalleLote(req, res) {
         0
       );
 
-      resultado = {
-        lote,
-        bajas,
-        resumen: {
-          iniciales: lote.cantidadInicial,
-          bajas: totalBajas,
-          enCrianza: lote.cantidadInicial - totalBajas
-        }
-      };
+      const producciones = await ProduccionPollo.find({
+  loteId: lote._id
+})
+  .sort({ fecha: -1, _id: -1 })
+  .session(session)
+  .lean();
+
+const totalProcesados = producciones.reduce(
+  (suma, produccion) =>
+    suma + produccion.pollosProcesados,
+  0
+);
+
+resultado = {
+  lote,
+  bajas,
+  producciones,
+  resumen: {
+    iniciales: lote.cantidadInicial,
+    bajas: totalBajas,
+    procesados: totalProcesados,
+    enCrianza:
+      lote.cantidadInicial -
+      totalBajas -
+      totalProcesados
+  }
+};
     });
 
     return res.json({
@@ -258,8 +277,23 @@ export async function registrarBajaLote(req, res) {
         0
       );
 
-      const disponibles =
-        lote.cantidadInicial - totalBajas;
+      const producciones = await ProduccionPollo.find({
+  loteId: lote._id
+})
+  .select("pollosProcesados")
+  .session(session)
+  .lean();
+
+const totalProcesados = producciones.reduce(
+  (suma, produccion) =>
+    suma + produccion.pollosProcesados,
+  0
+);
+
+const disponibles =
+  lote.cantidadInicial -
+  totalBajas -
+  totalProcesados;
 
       if (cantidad > disponibles) {
         throw fallo(

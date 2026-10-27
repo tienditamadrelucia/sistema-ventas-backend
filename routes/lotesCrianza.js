@@ -11,6 +11,7 @@ import {
   obtenerDetalleLote,
   registrarBajaLote
 } from "../controllers/lotesCrianza.js";
+import ProduccionPollo from "../models/ProduccionPollo.js";
 
 const router = express.Router();
 
