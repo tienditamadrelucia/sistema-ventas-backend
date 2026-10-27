@@ -313,27 +313,40 @@ router.delete("/:id", async (req, res) => {
   }
 });
 
-// Consultar el detalle y las bajas de un lote.
+// Consultar el detalle del lote.
 router.get("/:id", obtenerDetalleLote);
 
-// Registrar una baja de animales.
+// Registrar bajas.
 router.post("/:id/bajas", registrarBajaLote);
 
+// Registrar producción.
 router.post(
   "/:id/producciones",
   registrarProduccionPollo
 );
 
+// Consultar gastos del lote.
+router.get(
+  "/:id/gastos",
+  obtenerGastosLote
+);
 
-// Registrar un gasto nuevo y asignarlo al lote.
+// Registrar un gasto nuevo.
 router.post(
   "/:id/gastos",
   crearGastoLote
 );
 
+// Buscar gastos existentes disponibles.
 router.get(
   "/:id/gastos/disponibles",
   buscarGastosAsignables
+);
+
+// Vincular un gasto existente.
+router.post(
+  "/:id/gastos/asignar",
+  asignarGastoLote
 );
 
 export default router;
