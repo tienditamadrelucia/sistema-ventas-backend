@@ -219,6 +219,75 @@ const compraReventaSchema = new mongoose.Schema(
   }
 );
 
+const asignacionLoteSchema = new mongoose.Schema(
+  {
+    loteId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "LoteCrianza",
+      required: true
+    },
+
+    sedeProduccion: {
+      type: String,
+      enum: ["MONASTERIO"],
+      default: "MONASTERIO",
+      required: true
+    },
+
+    concepto: {
+      type: String,
+      enum: [
+        "COMPRA_POLLITOS",
+        "ALIMENTO",
+        "MEDICAMENTOS_VACUNAS",
+        "CAMA_LIMPIEZA",
+        "ATENCION_VETERINARIA",
+        "PROCESAMIENTO",
+        "EMPAQUE",
+        "TRANSPORTE",
+        "OTROS"
+      ],
+      required: true
+    },
+
+    // Parte del gasto asignada al lote.
+    // Usa la misma moneda del gasto original.
+    montoAsignado: {
+      type: Number,
+      required: true,
+      min: 0.01,
+      validate: {
+        validator: (valor) =>
+          Number.isFinite(valor) &&
+          Number.isSafeInteger(
+            Math.round(valor * 100)
+          ) &&
+          Math.abs(
+            valor * 100 -
+            Math.round(valor * 100)
+          ) < 0.000001,
+        message:
+          "El monto asignado debe tener como máximo dos decimales."
+      }
+    },
+
+    asignadoPor: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Usuario",
+      required: true
+    },
+
+    fechaAsignacion: {
+      type: Date,
+      default: Date.now,
+      required: true
+    }
+  },
+  {
+    _id: false
+  }
+);
+
 const dbGastosSchema = new mongoose.Schema({
   fecha: {
     type: Date,
@@ -288,6 +357,47 @@ const dbGastosSchema = new mongoose.Schema({
     type: String,
     default: "N"
   },
+
+  // Distribución del gasto entre lotes de producción.
+// No crea pagos adicionales ni cambia la sede que paga.
+asignacionesLotes: {
+  type: [asignacionLoteSchema],
+  default: undefined,
+  validate: {
+    validator: function (asignaciones) {
+      if (!asignaciones || asignaciones.length === 0) {
+        return true;
+      }
+
+      const lotes = asignaciones.map(
+        (asignacion) => String(asignacion.loteId)
+      );
+
+      if (new Set(lotes).size !== lotes.length) {
+        return false;
+      }
+
+      const totalCentavos = asignaciones.reduce(
+        (suma, asignacion) =>
+          suma +
+          Math.round(asignacion.montoAsignado * 100),
+        0
+      );
+
+      const montoCentavos = Math.round(
+        Number(this.monto) * 100
+      );
+
+      return (
+        Number.isSafeInteger(totalCentavos) &&
+        Number.isSafeInteger(montoCentavos) &&
+        totalCentavos <= montoCentavos
+      );
+    },
+    message:
+      "No puede repetir un lote ni asignar más que el monto total del gasto."
+  }
+},
 
   // Solo se completa en las nuevas compras para reventa.
   compraReventa: {

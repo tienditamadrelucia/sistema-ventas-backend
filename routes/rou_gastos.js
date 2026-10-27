@@ -7,6 +7,13 @@ import {
 
 const router = express.Router();
 
+function intentaAsignarLotes(body = {}) {
+  return Object.prototype.hasOwnProperty.call(
+    body,
+    "asignacionesLotes"
+  );
+}
+
 router.post(
   "/compra-reventa",
   protegerEscrituras(async (req) => [
@@ -74,6 +81,13 @@ const prepararClasificacion = (body) => {
 // CREAR GASTO
 // ==========================================
 router.post("/", async (req, res) => {
+  if (intentaAsignarLotes(req.body)) {
+  return res.status(400).json({
+    ok: false,
+    mensaje:
+      "Las asignaciones a lotes deben realizarse desde Gastos del lote."
+  });
+}
   try {
         if (
       req.body.clasificacion === "COMPRA_REVENTA" ||
@@ -118,12 +132,18 @@ router.post("/", async (req, res) => {
     }
 
     const nuevo = new dbGastos({
-      ...req.body,
-      sede,
-      numeroRecibo: numeroRecibo || null,
-      clasificacion: datosClasificacion.clasificacion,
-      actividadProductiva: datosClasificacion.actividadProductiva
-    });
+  fecha: req.body.fecha,
+  descripcion: req.body.descripcion,
+  moneda: req.body.moneda,
+  monto: req.body.monto,
+  cajaChica: req.body.cajaChica,
+  usuario: req.body.usuario,
+  sede,
+  numeroRecibo: numeroRecibo || null,
+  clasificacion: datosClasificacion.clasificacion,
+  actividadProductiva:
+    datosClasificacion.actividadProductiva
+});
 
     await nuevo.save();
 
@@ -345,6 +365,22 @@ router.put("/:id", async (req, res) => {
       });
     }
 
+    if (intentaAsignarLotes(req.body)) {
+  return res.status(400).json({
+    ok: false,
+    mensaje:
+      "Las asignaciones a lotes deben realizarse desde Gastos del lote."
+  });
+}
+
+if (gastoActual.asignacionesLotes?.length) {
+  return res.status(409).json({
+    ok: false,
+    mensaje:
+      "Este gasto está vinculado a producción. No puede modificarse desde el formulario común."
+  });
+}
+
         if (gastoActual.cierre === "S") {
       return res.status(409).json({
         ok: false,
@@ -410,20 +446,36 @@ router.put("/:id", async (req, res) => {
     }
 
     const actualizado = await dbGastos
-      .findByIdAndUpdate(
-        req.params.id,
-        {
-          ...req.body,
-          sede,
-          numeroRecibo: numeroRecibo || null,
-          clasificacion: datosClasificacion.clasificacion,
-          actividadProductiva: datosClasificacion.actividadProductiva
-        },
-        {
-          new: true,
-          runValidators: true
-        }
-      )
+  .findOneAndUpdate(
+    {
+      _id: gastoActual._id,
+      cierre: { $ne: "S" },
+      clasificacion: { $ne: "COMPRA_REVENTA" },
+      compraReventa: null,
+      "asignacionesLotes.0": {
+        $exists: false
+      }
+    },
+    {
+      $set: {
+        fecha: req.body.fecha,
+        descripcion: req.body.descripcion,
+        moneda: req.body.moneda,
+        monto: req.body.monto,
+        cajaChica: req.body.cajaChica,
+        usuario: req.body.usuario,
+        sede,
+        numeroRecibo: numeroRecibo || null,
+        clasificacion: datosClasificacion.clasificacion,
+        actividadProductiva:
+          datosClasificacion.actividadProductiva
+      }
+    },
+    {
+      returnDocument: "after",
+      runValidators: true
+    }
+  )
       .populate([
   {
     path: "actividadProductiva",
@@ -439,6 +491,14 @@ router.put("/:id", async (req, res) => {
       ok: true,
       gasto: actualizado
     });
+
+    if (!actualizado) {
+  return res.status(409).json({
+    ok: false,
+    mensaje:
+      "El gasto cambió mientras se intentaba modificar. Actualice la lista."
+  });
+}
 
   } catch (error) {
     console.error("Error actualizando gasto:", error);
@@ -464,6 +524,14 @@ router.delete("/:id", async (req, res) => {
       });
     }
 
+    if (gasto.asignacionesLotes?.length) {
+  return res.status(409).json({
+    ok: false,
+    mensaje:
+      "Este gasto está vinculado a producción. No puede eliminarse desde el formulario común."
+  });
+}
+
     if (gasto.cierre === "S") {
       return res.status(409).json({
         ok: false,
@@ -483,11 +551,14 @@ router.delete("/:id", async (req, res) => {
     }
 
     const eliminado = await dbGastos.findOneAndDelete({
-      _id: gasto._id,
-      cierre: { $ne: "S" },
-      clasificacion: { $ne: "COMPRA_REVENTA" },
-      compraReventa: null
-    });
+  _id: gasto._id,
+  cierre: { $ne: "S" },
+  clasificacion: { $ne: "COMPRA_REVENTA" },
+  compraReventa: null,
+  "asignacionesLotes.0": {
+    $exists: false
+  }
+});
 
     if (!eliminado) {
       return res.status(409).json({
