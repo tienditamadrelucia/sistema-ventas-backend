@@ -12,6 +12,9 @@ import {
   registrarBajaLote
 } from "../controllers/lotesCrianza.js";
 import ProduccionPollo from "../models/ProduccionPollo.js";
+import {
+  registrarProduccionPollo
+} from "../controllers/produccionPollo.js";
 
 const router = express.Router();
 
@@ -290,5 +293,10 @@ router.get("/:id", obtenerDetalleLote);
 
 // Registrar una baja de animales.
 router.post("/:id/bajas", registrarBajaLote);
+
+router.post(
+  "/:id/producciones",
+  registrarProduccionPollo
+);
 
 export default router;

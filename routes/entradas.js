@@ -168,6 +168,17 @@ router.put("/:id", async (req, res) => {
       });
     }
 
+    if (
+  entradaActual.produccionId ||
+  entradaActual.loteId
+) {
+  return res.status(409).json({
+    ok: false,
+    error:
+      "Esta entrada pertenece a un lote de producción. No puede modificarse desde Entradas."
+  });
+}
+
     if (entradaActual.cierre === "S") {
       return res.status(409).json({
         ok: false,
@@ -264,8 +275,15 @@ const sedeFinal = sede === "MONASTERIO" ? "MONASTERIO" : "TIENDITA";
     }
 
     // ⭐ Actualizar entrada
-    const entrada = await Entrada.findByIdAndUpdate(
-      req.params.id,
+    const entrada = await Entrada.findOneAndUpdate(
+  {
+    _id: req.params.id,
+    cierre: { $ne: "S" },
+    gastoId: null,
+    loteId: null,
+    produccionId: null,
+    observacion: { $ne: "COMPRAS" }
+  },
       {
         fecha: new Date(fecha),
         categoria,
@@ -309,6 +327,17 @@ router.delete("/:id", async (req, res) => {
       });
     }
 
+    if (
+  entrada.produccionId ||
+  entrada.loteId
+) {
+  return res.status(409).json({
+    ok: false,
+    error:
+      "Esta entrada pertenece a un lote de producción. No puede eliminarse desde Entradas."
+  });
+}
+
     if (entrada.cierre === "S") {
       return res.status(409).json({
         ok: false,
@@ -333,11 +362,13 @@ router.delete("/:id", async (req, res) => {
     }
 
     const eliminado = await Entrada.findOneAndDelete({
-      _id: entrada._id,
-      cierre: { $ne: "S" },
-      gastoId: null,
-      observacion: { $ne: "COMPRAS" }
-    });
+  _id: entrada._id,
+  cierre: { $ne: "S" },
+  gastoId: null,
+  loteId: null,
+  produccionId: null,
+  observacion: { $ne: "COMPRAS" }
+});
 
     if (!eliminado) {
       return res.status(409).json({

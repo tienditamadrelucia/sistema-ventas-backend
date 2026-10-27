@@ -77,11 +77,38 @@ const entradaSchema = new mongoose.Schema(
       type: Number,
       min: 0,
       default: undefined
-    }
+    },
+
+    // Vinculación con la producción de pollos.
+    // Las entradas anteriores conservan sus datos.
+    loteId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "LoteCrianza",
+      default: null
+    },
+
+    produccionId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "ProduccionPollo",
+      default: null
+    },
+
+    presentacionProduccion: {
+      type: String,
+      enum: ["PIEZA", "PAQUETE_DOS", "SOLO_PESO"],
+      default: undefined
+    },
+
+    cantidadPresentaciones: {
+      type: Number,
+      default: null
+    },
+
   },
   {
     timestamps: true
   }
+  
 );
 
 export default mongoose.model("Entrada", entradaSchema);
