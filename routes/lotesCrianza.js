@@ -16,6 +16,13 @@ import {
   registrarProduccionPollo
 } from "../controllers/produccionPollo.js";
 import Gastos from "../models/dbGastos.js";
+import {
+  obtenerGastosLote
+} from "../controllers/gastosLote.js";
+
+import {
+  asignarGastoLote
+} from "../controllers/asignarGastoLote.js";
 
 const router = express.Router();
 
@@ -312,5 +319,13 @@ router.post(
   "/:id/producciones",
   registrarProduccionPollo
 );
+
+import {
+  obtenerGastosLote
+} from "../controllers/gastosLote.js";
+
+import {
+  asignarGastoLote
+} from "../controllers/asignarGastoLote.js";
 
 export default router;
