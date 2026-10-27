@@ -1,11 +1,6 @@
 const TIPOS = [
-  "PECHUGA",
-  "MUSLOS",
-  "ALAS",
-  "PATAS",
-  "POLLO_ENTERO",
-  "MILANESA",
-  "CHURRASCO"
+  "PECHUGA", "MUSLOS", "ALAS", "PATAS",
+  "POLLO_ENTERO", "MILANESA", "CHURRASCO"
 ];
 
 function numero(valor) {
@@ -16,21 +11,6 @@ function numero(valor) {
     )
       ? Number(valor)
       : NaN;
-}
-
-function gramos(valor, permiteCero = false) {
-  const peso = numero(valor);
-  const resultado = Math.round(peso * 1000);
-
-  return (
-    Number.isFinite(peso) &&
-    peso >= 0 &&
-    Number.isSafeInteger(resultado) &&
-    (permiteCero ? resultado >= 0 : resultado > 0) &&
-    Math.abs(peso * 1000 - resultado) < 0.000001
-  )
-    ? resultado
-    : NaN;
 }
 
 function comparar(esperados, registrados, nombre) {
@@ -47,6 +27,7 @@ function comparar(esperados, registrados, nombre) {
     registrados: valido ? registrados : null,
     diferencia,
     completo: valido && diferencia === 0,
+
     mensaje: !valido
       ? `Complete las cantidades de ${nombre}.`
       : diferencia > 0
@@ -76,15 +57,15 @@ export function evaluarControlProduccion(datos = {}) {
     ? datos.detalles
     : [];
 
-  const cantidades = {};
-  let pesoProductos = 0;
-  let pesosValidos = true;
-
   if (detalles.length === 0 || detalles.length > 7) {
     errores.push(
       "Registre entre uno y siete productos obtenidos."
     );
   }
+
+  const cantidades = {};
+  let totalGramos = 0;
+  let pesosValidos = true;
 
   for (const detalle of detalles) {
     const tipo = detalle?.tipoProducto;
@@ -102,29 +83,33 @@ export function evaluarControlProduccion(datos = {}) {
       continue;
     }
 
-    const peso = gramos(detalle.pesoKg);
+    const peso = numero(detalle.pesoKg);
+    const gramos = Math.round(peso * 1000);
 
-    if (!Number.isFinite(peso)) {
+    if (
+      !Number.isFinite(peso) ||
+      peso <= 0 ||
+      !Number.isSafeInteger(gramos) ||
+      gramos <= 0 ||
+      Math.abs(peso * 1000 - gramos) >= 0.000001
+    ) {
       errores.push(
-        `Revise el peso de ${tipo}: use hasta tres decimales.`
+        `Revise los kilos de ${tipo}: deben ser mayores que cero y tener hasta tres decimales.`
       );
 
       pesosValidos = false;
     } else {
-      pesoProductos += peso;
+      totalGramos += gramos;
     }
 
-    let campo = "";
-
-    if (
-      ["PECHUGA", "MUSLOS", "POLLO_ENTERO"].includes(tipo)
-    ) {
-      campo = "cantidadPresentaciones";
-    } else if (tipo === "MILANESA") {
-      campo = "pechugasUtilizadas";
-    } else if (tipo === "CHURRASCO") {
-      campo = "muslosUtilizados";
-    }
+    const campo =
+      tipo === "MILANESA"
+        ? "pechugasUtilizadas"
+        : tipo === "CHURRASCO"
+          ? "muslosUtilizados"
+          : ["PECHUGA", "MUSLOS", "POLLO_ENTERO"].includes(tipo)
+            ? "cantidadPresentaciones"
+            : "";
 
     let cantidad = campo
       ? numero(detalle[campo])
@@ -171,85 +156,32 @@ export function evaluarControlProduccion(datos = {}) {
     "muslos"
   );
 
-  const informado = (valor) =>
-  valor !== undefined &&
-  valor !== null &&
-  !(
-    typeof valor === "string" &&
-    valor.trim() === ""
-  );
-
-const controlInformado = informado(datos.pesoControlKg);
-const mermasInformadas = informado(datos.mermasKg);
-
-const control = gramos(datos.pesoControlKg);
-const mermas = gramos(datos.mermasKg, true);
-
-if (
-  mermasInformadas &&
-  !Number.isFinite(mermas)
-) {
-  errores.push(
-    "Revise las mermas: deben ser cero o positivas y tener hasta tres decimales."
-  );
-}
-
-const pesosCompletos =
-  pesosValidos &&
-  detalles.length > 0 &&
-  Number.isSafeInteger(pesoProductos) &&
-  Number.isSafeInteger(control) &&
-  Number.isSafeInteger(mermas) &&
-  Number.isSafeInteger(pesoProductos + mermas);
-
-const diferencia = pesosCompletos
-  ? control - pesoProductos - mermas
-  : null;
-
-const peso = {
-  productosKg:
+  const kilosValidos =
     pesosValidos &&
-    Number.isSafeInteger(pesoProductos)
-      ? pesoProductos / 1000
+    detalles.length > 0 &&
+    Number.isSafeInteger(totalGramos);
+
+  const peso = {
+    productosKg: kilosValidos
+      ? totalGramos / 1000
       : null,
 
-  controlKg: Number.isFinite(control)
-    ? control / 1000
-    : undefined,
+    controlKg: undefined,
+    mermasKg: undefined,
+    diferenciaKg: null,
+    pendiente: false,
+    completo: kilosValidos,
 
-  mermasKg: Number.isFinite(mermas)
-    ? mermas / 1000
-    : undefined,
+    mensaje: kilosValidos
+      ? `Peso total de productos: ${(totalGramos / 1000).toFixed(3)} kg.`
+      : "Complete los kilos de cada producto registrado."
+  };
 
-  diferenciaKg: diferencia === null
-    ? null
-    : diferencia / 1000,
-
-  pendiente: !controlInformado,
-
-  completo:
-    pesosCompletos && diferencia === 0,
-
-  mensaje: !controlInformado
-    ? "No se informó el peso global: se guardarán los kilos de cada producto sin conciliación global."
-    : !pesosCompletos
-      ? "Complete los pesos de productos, control y mermas (cero si no hubo)."
-      : diferencia > 0
-        ? `Faltan ${(diferencia / 1000).toFixed(3)} kg por justificar.`
-        : diferencia < 0
-          ? `El peso registrado excede el control en ${(-diferencia / 1000).toFixed(3)} kg.`
-          : "Peso conciliado: productos y mermas coinciden con el peso de control."
-};
-
-for (const actual of [pechugas, muslos]) {
-  if (!actual.completo) {
-    errores.push(actual.mensaje);
+  for (const actual of [pechugas, muslos, peso]) {
+    if (!actual.completo) {
+      errores.push(actual.mensaje);
+    }
   }
-}
-
-if (controlInformado && !peso.completo) {
-  errores.push(peso.mensaje);
-}
 
   return {
     valido: errores.length === 0,

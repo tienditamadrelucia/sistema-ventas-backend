@@ -185,16 +185,7 @@ function firma(datos) {
     fecha: diaComercial(datos.fecha),
     pollosProcesados: datos.pollosProcesados,
     observaciones: datos.observaciones || "",
-    detalles: normalizarDetalles(datos.detalles),
-
-    control:
-      datos.pesoControlKg !== undefined ||
-      datos.mermasKg !== undefined
-      ? {
-          pesoControlKg: numero(datos.pesoControlKg),
-          mermasKg: numero(datos.mermasKg)
-        }
-      : null
+    detalles: normalizarDetalles(datos.detalles)
   });
 }
 
