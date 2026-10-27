@@ -2,6 +2,11 @@
 import express from "express";
 import dbSalidas from "../models/dbSalidas.js";
 import Producto from "../models/Producto.js";
+import {
+  protegerEscrituras,
+  diaComercial,
+  fallo
+} from "../utils/controlCaja.js";
 
 const router = express.Router();
 const filtroPorSede = (sede) => {
@@ -18,6 +23,86 @@ const filtroPorSede = (sede) => {
     ]
   };
 };
+
+function validarDiaNuevo(fecha) {
+  const dia = diaComercial(fecha);
+
+  const partes = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/Caracas",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).formatToParts(new Date());
+
+  const parte = (tipo) =>
+    partes.find((item) => item.type === tipo).value;
+
+  const hoy =
+    `${parte("year")}-${parte("month")}-${parte("day")}`;
+
+  if (dia > hoy) {
+    throw fallo(
+      400,
+      "No puede registrar una salida futura."
+    );
+  }
+
+  return dia;
+}
+
+const protegerSalidaComun = protegerEscrituras(
+  async (req) => {
+    if (req.method === "POST") {
+      return [{
+        fecha: validarDiaNuevo(req.body?.fecha),
+        sede: req.body?.sede || "TIENDITA"
+      }];
+    }
+
+    if (
+      !/^[a-fA-F0-9]{24}$/.test(req.params.id || "")
+    ) {
+      throw fallo(
+        400,
+        "La salida indicada no es válida."
+      );
+    }
+
+    const salida = await dbSalidas
+      .findById(req.params.id)
+      .session(req.cajaMongo);
+
+    if (!salida) {
+      throw fallo(404, "Salida no encontrada.");
+    }
+
+    const sede = salida.sede === "MONASTERIO"
+      ? "MONASTERIO"
+      : "TIENDITA";
+
+    const alcances = [{
+      fecha: salida.fecha,
+      sede
+    }];
+
+    if (req.method === "PUT") {
+      alcances.push({
+        fecha: validarDiaNuevo(req.body?.fecha),
+        sede
+      });
+    }
+
+    return alcances;
+  }
+);
+
+function protegerSalida(req, res, next) {
+  if (req.cajaMongo?.inTransaction()) {
+    return next();
+  }
+
+  return protegerSalidaComun(req, res, next);
+}
 
 // GET paginado
 router.get("/", async (req, res) => {
@@ -86,7 +171,7 @@ router.get("/reporte", async (req, res) => {
 
 
 // POST crear
-router.post("/", async (req, res) => {
+router.post("/", protegerSalida, async (req, res) => {
   try {
     const {
       fecha,
@@ -102,7 +187,9 @@ router.post("/", async (req, res) => {
       sede === "MONASTERIO" ? "MONASTERIO" : "TIENDITA";
 
     // Verificar que el producto exista
-    const producto = await Producto.findById(productoId);
+    const producto = await Producto
+      .findById(productoId)
+      .session(req.cajaMongo);
 
     if (!producto) {
       return res.status(404).json({
@@ -124,7 +211,7 @@ router.post("/", async (req, res) => {
       });
     }
 
-    const Unasalida = await dbSalidas.create({
+    const Unasalida = new dbSalidas({
       fecha: new Date(fecha),
       categoria,
       productoId,
@@ -132,6 +219,10 @@ router.post("/", async (req, res) => {
       cantidad,
       observacion,
       sede: sedeFinal
+    });
+
+    await Unasalida.save({
+      session: req.cajaMongo
     });
 
     res.status(201).json({
@@ -151,9 +242,11 @@ router.post("/", async (req, res) => {
 // =====================================================
 // MODIFICAR SALIDAS COMUNES
 // =====================================================
-router.put("/:id", async (req, res) => {
+router.put("/:id", protegerSalida, async (req, res) => {
   try {
-    const salida = await dbSalidas.findById(req.params.id);
+    const salida = await dbSalidas
+      .findById(req.params.id)
+      .session(req.cajaMongo);
 
     if (!salida) {
       return res.status(404).json({
@@ -234,6 +327,7 @@ router.put("/:id", async (req, res) => {
         }
       },
       {
+        session: req.cajaMongo,
         returnDocument: "after",
         runValidators: true
       }
@@ -264,9 +358,11 @@ router.put("/:id", async (req, res) => {
 // =====================================================
 // ELIMINAR SALIDAS COMUNES
 // =====================================================
-router.delete("/:id", async (req, res) => {
+router.delete("/:id", protegerSalida, async (req, res) => {
   try {
-    const salida = await dbSalidas.findById(req.params.id);
+    const salida = await dbSalidas
+      .findById(req.params.id)
+      .session(req.cajaMongo);
 
     if (!salida) {
       return res.status(404).json({
@@ -291,12 +387,17 @@ router.delete("/:id", async (req, res) => {
       });
     }
 
-    const eliminada = await dbSalidas.findOneAndDelete({
-      _id: salida._id,
-      cierre: { $ne: "S" },
-      loteId: null,
-      consumoId: null
-    });
+    const eliminada = await dbSalidas.findOneAndDelete(
+      {
+        _id: salida._id,
+        cierre: { $ne: "S" },
+        loteId: null,
+        consumoId: null
+      },
+      {
+        session: req.cajaMongo
+      }
+    );
 
     if (!eliminada) {
       return res.status(409).json({
