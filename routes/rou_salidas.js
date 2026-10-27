@@ -148,77 +148,173 @@ router.post("/", async (req, res) => {
   }
 });
 
-// PUT actualizar (solo fecha y cantidad)
+// =====================================================
+// MODIFICAR SALIDAS COMUNES
+// =====================================================
 router.put("/:id", async (req, res) => {
   try {
+    const salida = await dbSalidas.findById(req.params.id);
+
+    if (!salida) {
+      return res.status(404).json({
+        ok: false,
+        mensaje: "Salida no encontrada."
+      });
+    }
+
+    if (salida.consumoId || salida.loteId) {
+      return res.status(409).json({
+        ok: false,
+        mensaje:
+          "Esta salida pertenece a un lote de producción. No puede modificarse desde Salidas."
+      });
+    }
+
+    if (salida.cierre === "S") {
+      return res.status(409).json({
+        ok: false,
+        mensaje:
+          "Esta salida pertenece a un período cerrado."
+      });
+    }
+
     const { fecha, cantidad, sede } = req.body;
 
     const sedeFinal =
       sede === "MONASTERIO" ? "MONASTERIO" : "TIENDITA";
 
-    // Buscar primero la salida
-    const salidaExistente = await dbSalidas.findById(req.params.id);
-
-    if (!salidaExistente) {
-      return res.status(404).json({
-        ok: false,
-        mensaje: "Salida no encontrada"
-      });
-    }
-
-    // Las salidas antiguas sin sede pertenecen a TIENDITA
     const sedeSalida =
-      salidaExistente.sede === "MONASTERIO"
+      salida.sede === "MONASTERIO"
         ? "MONASTERIO"
         : "TIENDITA";
 
     if (sedeSalida !== sedeFinal) {
       return res.status(400).json({
         ok: false,
-        error: "La salida no pertenece a la sede seleccionada."
+        mensaje:
+          "La salida no pertenece a la sede seleccionada."
       });
     }
 
-    const Unasalida = await dbSalidas.findByIdAndUpdate(
-      req.params.id,
+    const fechaFinal = new Date(fecha);
+
+    const cantidadFinal =
+      typeof cantidad === "number" ||
+      (
+        typeof cantidad === "string" &&
+        cantidad.trim() !== ""
+      )
+        ? Number(cantidad)
+        : NaN;
+
+    if (
+      !Number.isFinite(fechaFinal.getTime()) ||
+      !Number.isFinite(cantidadFinal) ||
+      cantidadFinal <= 0
+    ) {
+      return res.status(400).json({
+        ok: false,
+        mensaje:
+          "Indique una fecha válida y una cantidad mayor que cero."
+      });
+    }
+
+    const actualizada = await dbSalidas.findOneAndUpdate(
       {
-        fecha: new Date(fecha),
-        cantidad,
-        sede: sedeFinal
+        _id: salida._id,
+        cierre: { $ne: "S" },
+        loteId: null,
+        consumoId: null
       },
-      { new: true }
+      {
+        $set: {
+          fecha: fechaFinal,
+          cantidad: cantidadFinal,
+          sede: sedeSalida
+        }
+      },
+      {
+        returnDocument: "after",
+        runValidators: true
+      }
     );
 
-    res.json({
-      ok: true,
-      Salida: Unasalida
-    });
+    if (!actualizada) {
+      return res.status(409).json({
+        ok: false,
+        mensaje:
+          "La salida cambió mientras se intentaba modificar. Actualice la lista."
+      });
+    }
 
+    return res.json({
+      ok: true,
+      Salida: actualizada
+    });
   } catch (error) {
+    console.error("Error actualizando salida:", error);
+
     return res.status(400).json({
       ok: false,
-      mensaje: "Error actualizando salida put",
-      detalle: error.message
+      mensaje: "No se pudo actualizar la salida."
     });
   }
 });
 
-// DELETE eliminar
+// =====================================================
+// ELIMINAR SALIDAS COMUNES
+// =====================================================
 router.delete("/:id", async (req, res) => {
   try {
-    const eliminado = await dbSalidas.findByIdAndDelete(req.params.id);
+    const salida = await dbSalidas.findById(req.params.id);
 
-    if (!eliminado) {
-      return res.status(404).json({ ok: false, mensaje: "Salida no encontrada" });
+    if (!salida) {
+      return res.status(404).json({
+        ok: false,
+        mensaje: "Salida no encontrada."
+      });
     }
 
-    res.json({ ok: true });
+    if (salida.consumoId || salida.loteId) {
+      return res.status(409).json({
+        ok: false,
+        mensaje:
+          "Esta salida pertenece a un lote de producción. No puede eliminarse desde Salidas."
+      });
+    }
 
+    if (salida.cierre === "S") {
+      return res.status(409).json({
+        ok: false,
+        mensaje:
+          "Esta salida pertenece a un período cerrado."
+      });
+    }
+
+    const eliminada = await dbSalidas.findOneAndDelete({
+      _id: salida._id,
+      cierre: { $ne: "S" },
+      loteId: null,
+      consumoId: null
+    });
+
+    if (!eliminada) {
+      return res.status(409).json({
+        ok: false,
+        mensaje:
+          "La salida cambió mientras se intentaba eliminar. Actualice la lista."
+      });
+    }
+
+    return res.json({
+      ok: true
+    });
   } catch (error) {
+    console.error("Error eliminando salida:", error);
+
     return res.status(500).json({
       ok: false,
-      mensaje: "Error eliminando salida",
-      detalle: error.message
+      mensaje: "No se pudo eliminar la salida."
     });
   }
 });

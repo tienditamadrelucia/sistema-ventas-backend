@@ -1,29 +1,90 @@
-// models/dbSalidas.js
 import mongoose from "mongoose";
 
 const salidaSchema = new mongoose.Schema(
   {
-    fecha: { type: Date, required: true },
-    // Código de la categoría (ALB, VEL, etc.)
-    categoria: { type: String },
-    // ID del producto
-    productoId: { type: mongoose.Schema.Types.ObjectId, ref: "Producto", required: true },
-    // Código del producto (opcional, porque ya tenemos el ID)
-    codigo: { type: Number },
-    // Cantidad que sale
-    cantidad: { type: Number, required: true },
-    // Motivo de la salida: VENTA, AJUSTE, etc.
-    observacion: { type: String, required: true },
+    fecha: {
+      type: Date,
+      required: true
+    },
+
+    categoria: {
+      type: String
+    },
+
+    productoId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Producto",
+      required: true
+    },
+
+    codigo: {
+      type: Number
+    },
+
+    // En los productos de pollo, la cantidad es en kilos.
+    cantidad: {
+      type: Number,
+      required: true
+    },
+
+    observacion: {
+      type: String,
+      required: true
+    },
+
     sede: {
       type: String,
       enum: ["TIENDITA", "MONASTERIO"],
       default: "TIENDITA",
       required: true
     },
-    cierre: { type: String, default: "N" }
+
+    cierre: {
+      type: String,
+      default: "N"
+    },
+
+    // Vinculación con el lote de producción.
+    loteId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "LoteCrianza",
+      default: null
+    },
+
+    // Registro de consumo que generó esta salida.
+    consumoId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "ConsumoLote",
+      default: null
+    },
+
+    presentacionProduccion: {
+      type: String,
+      enum: ["PIEZA", "PAQUETE_DOS", "SOLO_PESO"],
+      default: undefined
+    },
+
+    cantidadPresentaciones: {
+      type: Number,
+      default: null
+    }
   },
-  { timestamps: true }
+  {
+    timestamps: true
+  }
 );
 
+salidaSchema.index({
+  loteId: 1,
+  sede: 1,
+  fecha: 1
+});
 
-export default mongoose.model("dbSalidas", salidaSchema);
+salidaSchema.index({
+  consumoId: 1
+});
+
+export default mongoose.model(
+  "dbSalidas",
+  salidaSchema
+);
