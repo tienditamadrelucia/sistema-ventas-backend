@@ -23,6 +23,9 @@ import {
 import {
   asignarGastoLote
 } from "../controllers/asignarGastoLote.js";
+import {
+  crearGastoLote
+} from "../controllers/crearGastoLote.js";
 
 const router = express.Router();
 
@@ -327,5 +330,11 @@ import {
 import {
   asignarGastoLote
 } from "../controllers/asignarGastoLote.js";
+
+// Registrar un gasto nuevo y asignarlo al lote.
+router.post(
+  "/:id/gastos",
+  crearGastoLote
+);
 
 export default router;
