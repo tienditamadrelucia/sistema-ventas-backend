@@ -13,7 +13,8 @@ import {
 } from "../controllers/lotesCrianza.js";
 import ProduccionPollo from "../models/ProduccionPollo.js";
 import {
-  registrarProduccionPollo
+  registrarProduccionPollo,
+  modificarProduccionPollo
 } from "../controllers/produccionPollo.js";
 import Gastos from "../models/dbGastos.js";
 import {
@@ -347,6 +348,11 @@ router.get(
 router.post(
   "/:id/gastos/asignar",
   asignarGastoLote
+);
+
+router.put(
+  "/:id/producciones/:produccionId",
+  modificarProduccionPollo
 );
 
 export default router;

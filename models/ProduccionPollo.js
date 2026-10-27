@@ -73,6 +73,40 @@ const detalleProduccionSchema = new mongoose.Schema(
       default: null
     },
 
+    // Pechugas completas utilizadas para elaborar milanesa.
+pechugasUtilizadas: {
+  type: Number,
+  min: 1,
+  default: undefined,
+  validate: {
+    validator: (valor) =>
+      valor === undefined ||
+      (
+        Number.isSafeInteger(valor) &&
+        valor > 0
+      ),
+    message:
+      "Las pechugas utilizadas deben ser una cantidad entera mayor que cero."
+  }
+},
+
+// Muslos individuales utilizados para elaborar churrasco.
+muslosUtilizados: {
+  type: Number,
+  min: 1,
+  default: undefined,
+  validate: {
+    validator: (valor) =>
+      valor === undefined ||
+      (
+        Number.isSafeInteger(valor) &&
+        valor > 0
+      ),
+    message:
+      "Los muslos utilizados deben ser una cantidad entera mayor que cero."
+  }
+},
+
     // Entrada al inventario creada junto con
     // esta producción, dentro de la misma operación.
     entradaId: {
@@ -186,6 +220,63 @@ const ProduccionPolloSchema = new mongoose.Schema(
           "Registre al menos un producto, sin repetir productos ni tipos."
       }
     },
+
+    // Peso real de referencia antes de despiezar.
+// Incluye todo lo que se distribuirá entre
+// productos obtenidos y mermas.
+pesoControlKg: {
+  type: Number,
+  min: 0.001,
+  default: undefined,
+  validate: {
+    validator: (valor) =>
+      valor === undefined ||
+      (
+        Number.isFinite(valor) &&
+        Number.isSafeInteger(
+          Math.round(valor * 1000)
+        ) &&
+        Math.abs(
+          valor * 1000 -
+          Math.round(valor * 1000)
+        ) < 0.000001
+      ),
+    message:
+      "El peso de control debe tener como máximo tres decimales."
+  }
+},
+
+// Huesos, recortes y otras mermas.
+// No se incorporan como productos disponibles.
+mermasKg: {
+  type: Number,
+  min: 0,
+  default: undefined,
+  validate: {
+    validator: (valor) =>
+      valor === undefined ||
+      (
+        Number.isFinite(valor) &&
+        Number.isSafeInteger(
+          Math.round(valor * 1000)
+        ) &&
+        Math.abs(
+          valor * 1000 -
+          Math.round(valor * 1000)
+        ) < 0.000001
+      ),
+    message:
+      "Las mermas deben tener como máximo tres decimales."
+  }
+},
+
+// Identifica las jornadas que incorporan
+// las nuevas comprobaciones de cantidades y peso.
+versionControl: {
+  type: Number,
+  enum: [1],
+  default: undefined
+},
 
     observaciones: {
       type: String,
