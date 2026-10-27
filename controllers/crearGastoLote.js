@@ -2,7 +2,7 @@ import mongoose from "mongoose";
 import { createHash } from "node:crypto";
 import Gastos from "../models/dbGastos.js";
 import LoteCrianza from "../models/LoteCrianza.js";
-import ActividadProductiva from "../models/ActividadProductiva.js";
+import ActividadProductiva from "../models/dbListaProductiva.js";
 import {
   comprobarAcceso,
   comprobarAbierta,
