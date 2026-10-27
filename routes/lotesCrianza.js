@@ -5,6 +5,8 @@ import {
   comprobarAcceso,
   responderFallo
 } from "../utils/controlCaja.js";
+import mongoose from "mongoose";
+import BajaCrianza from "../models/BajaCrianza.js";
 
 const router = express.Router();
 
@@ -178,6 +180,89 @@ router.post("/", async (req, res) => {
       ok: false,
       mensaje: "No se pudo registrar el lote."
     });
+  }
+});
+
+// =====================================================
+// ELIMINAR LOTE SIN REGISTROS ASOCIADOS
+// SOLO ADMINISTRADOR
+// =====================================================
+router.delete("/:id", async (req, res) => {
+  if (req.usuarioCaja?.rol !== "ADMINISTRADOR") {
+    return res.status(403).json({
+      ok: false,
+      mensaje:
+        "Sólo el administrador puede eliminar lotes."
+    });
+  }
+
+  const { id } = req.params;
+
+  if (!/^[a-fA-F0-9]{24}$/.test(id)) {
+    return res.status(400).json({
+      ok: false,
+      mensaje: "El identificador del lote no es válido."
+    });
+  }
+
+  let session;
+
+  try {
+    session = await mongoose.startSession();
+
+    await session.withTransaction(async () => {
+      // La eliminación se revierte si se encuentra
+      // algún registro asociado.
+      const lote = await LoteCrianza.findOneAndDelete(
+        {
+          _id: id,
+          sede: "MONASTERIO",
+          especie: "POLLOS"
+        },
+        {
+          session
+        }
+      );
+
+      if (!lote) {
+        const error = new Error(
+          "El lote no existe o ya fue eliminado."
+        );
+        error.estado = 404;
+        throw error;
+      }
+
+      const tieneBajas = await BajaCrianza.exists({
+        loteId: lote._id
+      }).session(session);
+
+      if (tieneBajas) {
+        const error = new Error(
+          "No se puede eliminar el lote porque tiene bajas registradas."
+        );
+        error.estado = 409;
+        throw error;
+      }
+    });
+
+    return res.json({
+      ok: true,
+      mensaje: "Lote eliminado correctamente."
+    });
+  } catch (error) {
+    console.error("Error eliminando lote:", error);
+
+    return res.status(error.estado || 500).json({
+      ok: false,
+      mensaje:
+        error.estado
+          ? error.message
+          : "No se pudo eliminar el lote."
+    });
+  } finally {
+    if (session) {
+      await session.endSession();
+    }
   }
 });
 
