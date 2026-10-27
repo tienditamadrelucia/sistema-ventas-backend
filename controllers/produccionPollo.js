@@ -444,7 +444,10 @@ export async function registrarProduccionPollo(req, res) {
         { session }
       );
 
-      await Entrada.create(entradas, { session });
+      await Entrada.create(entradas, {
+        session,
+        ordered: true
+      });
 
       produccionGuardada = registros[0];
     });
