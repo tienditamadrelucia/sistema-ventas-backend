@@ -16,8 +16,8 @@ import {
   registrarProduccionPollo
 } from "../controllers/produccionPollo.js";
 import Gastos from "../models/dbGastos.js";
-import {
-  obtenerGastosLote
+import {  
+  buscarGastosAsignables
 } from "../controllers/gastosLote.js";
 
 import {
@@ -335,6 +335,11 @@ import {
 router.post(
   "/:id/gastos",
   crearGastoLote
+);
+
+router.get(
+  "/:id/gastos/disponibles",
+  buscarGastosAsignables
 );
 
 export default router;
