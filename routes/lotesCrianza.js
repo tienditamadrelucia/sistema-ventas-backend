@@ -16,7 +16,8 @@ import {
   registrarProduccionPollo
 } from "../controllers/produccionPollo.js";
 import Gastos from "../models/dbGastos.js";
-import {  
+import {
+  obtenerGastosLote,
   buscarGastosAsignables
 } from "../controllers/gastosLote.js";
 
@@ -323,13 +324,6 @@ router.post(
   registrarProduccionPollo
 );
 
-import {
-  obtenerGastosLote
-} from "../controllers/gastosLote.js";
-
-import {
-  asignarGastoLote
-} from "../controllers/asignarGastoLote.js";
 
 // Registrar un gasto nuevo y asignarlo al lote.
 router.post(
