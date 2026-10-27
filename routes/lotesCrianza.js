@@ -7,6 +7,10 @@ import {
 } from "../utils/controlCaja.js";
 import mongoose from "mongoose";
 import BajaCrianza from "../models/BajaCrianza.js";
+import {
+  obtenerDetalleLote,
+  registrarBajaLote
+} from "../controllers/lotesCrianza.js";
 
 const router = express.Router();
 
@@ -265,5 +269,11 @@ router.delete("/:id", async (req, res) => {
     }
   }
 });
+
+// Consultar el detalle y las bajas de un lote.
+router.get("/:id", obtenerDetalleLote);
+
+// Registrar una baja de animales.
+router.post("/:id/bajas", registrarBajaLote);
 
 export default router;
