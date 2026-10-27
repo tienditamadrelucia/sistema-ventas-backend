@@ -28,6 +28,10 @@ import {
 import {
   crearGastoLote
 } from "../controllers/crearGastoLote.js";
+import {
+  obtenerConsumoLote,
+  registrarConsumoLote
+} from "../controllers/consumoLote.js";
 
 const router = express.Router();
 
@@ -353,6 +357,18 @@ router.post(
 router.put(
   "/:id/producciones/:produccionId",
   modificarProduccionPollo
+);
+
+// Consultar existencias e historial de consumo.
+router.get(
+  "/:id/consumos",
+  obtenerConsumoLote
+);
+
+// Registrar consumo y sus salidas.
+router.post(
+  "/:id/consumos",
+  registrarConsumoLote
 );
 
 export default router;
