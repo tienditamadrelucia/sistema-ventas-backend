@@ -237,9 +237,23 @@ router.delete("/:id", async (req, res) => {
         throw error;
       }
 
-      const tieneBajas = await BajaCrianza.exists({
+        const tieneBajas = await BajaCrianza.exists({
+            loteId: lote._id
+          }).session(session);
+
+          const tieneProduccion =
+      await ProduccionPollo.exists({
         loteId: lote._id
       }).session(session);
+
+    if (tieneProduccion) {
+      const error = new Error(
+        "No se puede eliminar el lote porque tiene producción registrada."
+      );
+
+      error.estado = 409;
+      throw error;
+    }
 
       if (tieneBajas) {
         const error = new Error(
