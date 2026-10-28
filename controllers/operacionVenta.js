@@ -14,7 +14,11 @@ import {
   responderFallo
 } from "../utils/controlCaja.js";
 
-const porSede = sede =>
+import {
+  prepararVentaHuevos
+} from "../utils/inventarioHuevos.js";
+
+const porSede = (sede) =>
   sede === "MONASTERIO"
     ? { sede }
     : {
@@ -48,9 +52,12 @@ const referencias = [
   "bancoZ"
 ];
 
-const redondear = valor =>
-  Math.round((valor + Number.EPSILON) * 100) / 100;
+const redondear = (valor) =>
+  Math.round(
+    (valor + Number.EPSILON) * 100
+  ) / 100;
 
+// VALIDAR NÚMEROS
 function numero(
   valor,
   nombre,
@@ -63,12 +70,16 @@ function numero(
     valor < minimo ||
     valor > maximo
   ) {
-    throw fallo(400, `${nombre} inválido`);
+    throw fallo(
+      400,
+      `${nombre} inválido`
+    );
   }
 
   return valor;
 }
 
+// PREPARAR EL PAGO O EL VUELTO
 function prepararMoneda(datos, venta, operacion) {
   if (
     !datos ||
@@ -101,13 +112,21 @@ function prepararMoneda(datos, venta, operacion) {
     const valor = datos[campo] ?? 0;
 
     if (operacion === "VUELTOS") {
-      numero(valor, campo, -Infinity, 0);
+      numero(
+        valor,
+        campo,
+        -Infinity,
+        0
+      );
 
       if (
         !["efectivoP", "efectivoBs", "efectivoD"].includes(campo) &&
         valor !== 0
       ) {
-        throw fallo(400, "El vuelto solo admite efectivo");
+        throw fallo(
+          400,
+          "El vuelto solo admite efectivo"
+        );
       }
     } else {
       numero(valor, campo);
@@ -119,8 +138,13 @@ function prepararMoneda(datos, venta, operacion) {
   for (const campo of referencias) {
     const valor = datos[campo] ?? "";
 
-    if (!["string", "number"].includes(typeof valor)) {
-      throw fallo(400, "Referencia inválida");
+    if (
+      !["string", "number"].includes(typeof valor)
+    ) {
+      throw fallo(
+        400,
+        "Referencia inválida"
+      );
     }
 
     salida[campo] = String(valor);
@@ -131,7 +155,10 @@ function prepararMoneda(datos, venta, operacion) {
       salida.puntoBs > 0 &&
       (!salida.refPunto || !salida.lotePunto)
     ) {
-      throw fallo(400, "Faltan referencia o lote del punto");
+      throw fallo(
+        400,
+        "Faltan referencia o lote del punto"
+      );
     }
 
     if (
@@ -148,6 +175,7 @@ function prepararMoneda(datos, venta, operacion) {
   return salida;
 }
 
+// COMPROBAR UN PAGO O VUELTO EXISTENTE
 async function movimientoAnterior(
   id,
   venta,
@@ -160,10 +188,14 @@ async function movimientoAnterior(
     typeof id !== "string" ||
     !/^[a-f\d]{24}$/i.test(id)
   ) {
-    throw fallo(400, "ID de pago inválido");
+    throw fallo(
+      400,
+      "ID de pago inválido"
+    );
   }
 
-  const movimiento = await Moneda.findById(id)
+  const movimiento = await Moneda
+    .findById(id)
     .session(session);
 
   if (
@@ -181,6 +213,7 @@ async function movimientoAnterior(
   return movimiento;
 }
 
+// CONSERVAR EL COSTO HISTÓRICO AL CORREGIR
 function obtenerCostoGuardado(renglon) {
   const resultado = {};
 
@@ -188,7 +221,8 @@ function obtenerCostoGuardado(renglon) {
     renglon.origenProducto === "COMPRADO" ||
     renglon.origenProducto === "PRODUCCION_MONASTERIO"
   ) {
-    resultado.origenProducto = renglon.origenProducto;
+    resultado.origenProducto =
+      renglon.origenProducto;
   }
 
   if (
@@ -196,12 +230,14 @@ function obtenerCostoGuardado(renglon) {
     Number.isFinite(renglon.costoUnitarioUSD) &&
     renglon.costoUnitarioUSD >= 0
   ) {
-    resultado.costoUnitarioUSD = renglon.costoUnitarioUSD;
+    resultado.costoUnitarioUSD =
+      renglon.costoUnitarioUSD;
   }
 
   return resultado;
 }
 
+// FECHA ACTUAL DE VENEZUELA
 function fechaActualVenezuela() {
   const partes = new Intl.DateTimeFormat("en-US", {
     timeZone: "America/Caracas",
@@ -211,17 +247,25 @@ function fechaActualVenezuela() {
   }).formatToParts(new Date());
 
   const obtener = (tipo) =>
-    partes.find((parte) => parte.type === tipo).value;
+    partes.find(
+      (parte) => parte.type === tipo
+    ).value;
 
-  return `${obtener("year")}-${obtener("month")}-${obtener("day")}`;
+  return (
+    `${obtener("year")}-` +
+    `${obtener("month")}-` +
+    `${obtener("day")}`
+  );
 }
-
 export async function guardarOperacionCompleta(req, res) {
   try {
     const session = req.cajaMongo;
 
     if (!session?.inTransaction()) {
-      throw fallo(500, "Falta la protección transaccional");
+      throw fallo(
+        500,
+        "Falta la protección transaccional"
+      );
     }
 
     const body = req.body || {};
@@ -231,18 +275,26 @@ export async function guardarOperacionCompleta(req, res) {
       typeof body.operacionId !== "string" ||
       !/^[a-f\d-]{36}$/i.test(body.operacionId)
     ) {
-      throw fallo(400, "Identificador de operación inválido");
+      throw fallo(
+        400,
+        "Identificador de operación inválido"
+      );
     }
 
     if (
       typeof body.sinPago !== "boolean" ||
       typeof body.modoCredito !== "boolean"
     ) {
-      throw fallo(400, "Modalidad inválida");
+      throw fallo(
+        400,
+        "Modalidad inválida"
+      );
     }
 
     const hash = createHash("sha256")
-      .update(`${req.usuarioCaja._id}:${body.operacionId}`)
+      .update(
+        `${req.usuarioCaja._id}:${body.operacionId}`
+      )
       .digest("hex");
 
     const nuevaId = new mongoose.Types.ObjectId(
@@ -251,7 +303,7 @@ export async function guardarOperacionCompleta(req, res) {
 
     const id = body.ventaId || nuevaId;
 
-    // Reconocer el mismo envío si se perdió su respuesta.
+    // RECONOCER UNA OPERACIÓN YA CONFIRMADA
     const aplicada = await Ventas.collection.findOne(
       {
         _id: new mongoose.Types.ObjectId(id),
@@ -271,11 +323,16 @@ export async function guardarOperacionCompleta(req, res) {
     }
 
     let venta = body.ventaId
-      ? await Ventas.findById(body.ventaId).session(session)
+      ? await Ventas
+          .findById(body.ventaId)
+          .session(session)
       : null;
 
     if (body.ventaId && !venta) {
-      throw fallo(404, "Venta no encontrada");
+      throw fallo(
+        404,
+        "Venta no encontrada"
+      );
     }
 
     if (
@@ -314,10 +371,18 @@ export async function guardarOperacionCompleta(req, res) {
       typeof datos.hora !== "string" ||
       !datos.hora.trim()
     ) {
-      throw fallo(400, "Faltan cliente u hora");
+      throw fallo(
+        400,
+        "Faltan cliente u hora"
+      );
     }
 
-    const IVA = numero(datos.IVA, "IVA", 0, 100);
+    const IVA = numero(
+      datos.IVA,
+      "IVA",
+      0,
+      100
+    );
 
     if (
       !Array.isArray(body.items) ||
@@ -330,23 +395,32 @@ export async function guardarOperacionCompleta(req, res) {
       );
     }
 
-        // Leer los costos antes de borrar los renglones anteriores.
+    // CONSERVAR LOS COSTOS Y LA PROCEDENCIA ANTERIORES
     const costosAnteriores = new Map();
+    let renglonesAnterioresHuevos = [];
 
     if (venta) {
-      const anteriores = await Vendidos.find({
-        factura: venta.factura,
-        ...porSede(sede)
-      })
+      const anteriores = await Vendidos
+        .find({
+          factura: venta.factura,
+          ...porSede(sede)
+        })
         .session(session)
         .lean();
 
+      renglonesAnterioresHuevos = anteriores;
+
       for (const renglon of anteriores) {
-        const productoId = String(renglon.productoId);
+        const productoId = String(
+          renglon.productoId
+        );
+
         const costo = obtenerCostoGuardado(renglon);
 
         if (costosAnteriores.has(productoId)) {
-          const anterior = costosAnteriores.get(productoId);
+          const anterior = costosAnteriores.get(
+            productoId
+          );
 
           if (
             anterior.origenProducto !== costo.origenProducto ||
@@ -354,12 +428,17 @@ export async function guardarOperacionCompleta(req, res) {
           ) {
             throw fallo(
               409,
-              "La factura contiene el mismo producto con costos históricos distintos. Debe revisarse antes de reemplazar sus renglones."
+              "La factura contiene el mismo producto con " +
+              "costos históricos distintos. Debe revisarse " +
+              "antes de reemplazar sus renglones."
             );
           }
         }
 
-        costosAnteriores.set(productoId, costo);
+        costosAnteriores.set(
+          productoId,
+          costo
+        );
       }
     }
 
@@ -372,21 +451,35 @@ export async function guardarOperacionCompleta(req, res) {
     const lineas = [];
     let subtotal = 0;
 
+    // VALIDAR Y PREPARAR CADA PRODUCTO
     for (const item of body.items) {
       if (
         !item ||
         typeof item.productoId !== "string" ||
         !/^[a-f\d]{24}$/i.test(item.productoId)
       ) {
-        throw fallo(400, "Producto inválido");
+        throw fallo(
+          400,
+          "Producto inválido"
+        );
       }
 
-      const producto = await Producto.findById(
-        item.productoId
-      ).session(session);
+      const producto = await Producto
+        .findById(item.productoId)
+        .session(session);
 
       if (!producto) {
-        throw fallo(404, "Producto no encontrado");
+        throw fallo(
+          404,
+          "Producto no encontrado"
+        );
+      }
+
+      if ((producto.sede || "TIENDITA") !== sede) {
+        throw fallo(
+          400,
+          "El producto no pertenece a la sede de la venta."
+        );
       }
 
       const cantidad = numero(
@@ -395,7 +488,10 @@ export async function guardarOperacionCompleta(req, res) {
         Number.MIN_VALUE
       );
 
-      const precio = numero(item.precio, "Precio");
+      const precio = numero(
+        item.precio,
+        "Precio"
+      );
 
       const dscto = numero(
         item.dscto ?? 0,
@@ -408,12 +504,16 @@ export async function guardarOperacionCompleta(req, res) {
         cantidad * precio * (1 - dscto / 100);
 
       if (!Number.isFinite(total)) {
-        throw fallo(400, "Total de producto inválido");
+        throw fallo(
+          400,
+          "Total de producto inválido"
+        );
       }
 
       if (
         Math.abs(
-          numero(item.total, "Total de producto") - total
+          numero(item.total, "Total de producto") -
+          total
         ) > 0.02
       ) {
         throw fallo(
@@ -424,21 +524,25 @@ export async function guardarOperacionCompleta(req, res) {
 
       subtotal += total;
 
-      // Conservar la actividad y las reglas de participación.
-      const generaParticipacion =
-        Boolean(producto.generaParticipacion);
+      // PARTICIPACIÓN ENTRE SEDES
+      const generaParticipacion = Boolean(
+        producto.generaParticipacion
+      );
 
-      const beneficiarioParticipacion = generaParticipacion
-        ? producto.beneficiarioParticipacion || "NINGUNO"
-        : "NINGUNO";
+      const beneficiarioParticipacion =
+        generaParticipacion
+          ? producto.beneficiarioParticipacion || "NINGUNO"
+          : "NINGUNO";
 
-      const tipoParticipacion = generaParticipacion
-        ? producto.tipoParticipacion || "NINGUNA"
-        : "NINGUNA";
+      const tipoParticipacion =
+        generaParticipacion
+          ? producto.tipoParticipacion || "NINGUNA"
+          : "NINGUNA";
 
-      const valorParticipacion = generaParticipacion
-        ? Number(producto.valorParticipacion || 0)
-        : 0;
+      const valorParticipacion =
+        generaParticipacion
+          ? Number(producto.valorParticipacion || 0)
+          : 0;
 
       let montoParticipacion = 0;
 
@@ -452,21 +556,28 @@ export async function guardarOperacionCompleta(req, res) {
           cantidad * valorParticipacion;
       }
 
-      montoParticipacion = redondear(montoParticipacion);
+      montoParticipacion = redondear(
+        montoParticipacion
+      );
 
-            let datosCosto = {};
+      // COSTO HISTÓRICO DEL PRODUCTO
+      let datosCosto = {};
 
-      const productoIdTexto = String(producto._id);
+      const productoIdTexto = String(
+        producto._id
+      );
 
       if (costosAnteriores.has(productoIdTexto)) {
-        // Al editar, conservar el costo que ya tenía la venta.
-        // Si antes no tenía costo, continúa como desconocido.
-        datosCosto = costosAnteriores.get(productoIdTexto);
+        datosCosto = costosAnteriores.get(
+          productoIdTexto
+        );
       } else if (puedeTomarCostoActual) {
         datosCosto.origenProducto =
           producto.origen || "COMPRADO";
 
-        if (datosCosto.origenProducto === "COMPRADO") {
+        if (
+          datosCosto.origenProducto === "COMPRADO"
+        ) {
           const costo = producto.costo;
 
           if (
@@ -497,16 +608,33 @@ export async function guardarOperacionCompleta(req, res) {
       });
     }
 
+    // COMPROBAR Y ASIGNAR LOS HUEVOS POR GRUPO
+    await prepararVentaHuevos({
+      lineas,
+      anteriores: renglonesAnterioresHuevos,
+      factura: venta?.factura,
+      sede,
+      fecha: diaComercial(fecha),
+      fechaAnterior: venta?.fecha,
+      session
+    });
+
     const total = subtotal * (1 + IVA / 100);
 
-    numero(total, "Total de factura", Number.MIN_VALUE);
+    numero(
+      total,
+      "Total de factura",
+      Number.MIN_VALUE
+    );
 
     if (
       Math.abs(
-        numero(datos.total, "Total enviado") - total
+        numero(datos.total, "Total enviado") -
+        total
       ) > 0.02 ||
       Math.abs(
-        numero(datos.subtotal, "Subtotal enviado") - subtotal
+        numero(datos.subtotal, "Subtotal enviado") -
+        subtotal
       ) > 0.02
     ) {
       throw fallo(
@@ -514,9 +642,9 @@ export async function guardarOperacionCompleta(req, res) {
         "Los totales de la factura no coinciden"
       );
     }
+        let factura = venta?.factura;
 
-    let factura = venta?.factura;
-
+    // ASIGNAR NÚMERO A UNA FACTURA NUEVA
     if (!venta) {
       const contador = await Contador.findOneAndUpdate(
         {
@@ -537,10 +665,12 @@ export async function guardarOperacionCompleta(req, res) {
 
       factura = contador.valor;
 
-      const duplicada = await Ventas.findOne({
-        factura,
-        ...porSede(sede)
-      }).session(session);
+      const duplicada = await Ventas
+        .findOne({
+          factura,
+          ...porSede(sede)
+        })
+        .session(session);
 
       if (duplicada) {
         throw fallo(
@@ -565,12 +695,16 @@ export async function guardarOperacionCompleta(req, res) {
       subtotal,
       IVA,
       total,
+
       usuario: existente
         ? venta.usuario
-        : req.usuarioCaja.nombre || req.usuarioCaja.usuario,
+        : req.usuarioCaja.nombre ||
+          req.usuarioCaja.usuario,
+
       estado: body.sinPago || body.modoCredito
         ? "CREDITO"
         : "CONTADO",
+
       sede,
       tipoMovimiento: "VENTA"
     });
@@ -579,10 +713,12 @@ export async function guardarOperacionCompleta(req, res) {
     let vuelto = null;
 
     const pagosPrevios = existente
-      ? await Moneda.find({
-          factura,
-          ...porSede(sede)
-        }).session(session)
+      ? await Moneda
+          .find({
+            factura,
+            ...porSede(sede)
+          })
+          .session(session)
       : [];
 
     if (body.sinPago) {
@@ -626,8 +762,10 @@ export async function guardarOperacionCompleta(req, res) {
 
       if (
         pagosPrevios.some(
-          movimiento =>
-            !idsPermitidos.includes(String(movimiento._id))
+          (movimiento) =>
+            !idsPermitidos.includes(
+              String(movimiento._id)
+            )
         )
       ) {
         throw fallo(
@@ -641,13 +779,20 @@ export async function guardarOperacionCompleta(req, res) {
       const pagoDatos = prepararMoneda(
         body.pago,
         venta,
-        body.modoCredito ? "ABONO DE CREDITO" : "VENTA"
+        body.modoCredito
+          ? "ABONO DE CREDITO"
+          : "VENTA"
       );
 
       const vueltoDatos = body.vuelto
-        ? prepararMoneda(body.vuelto, venta, "VUELTOS")
+        ? prepararMoneda(
+            body.vuelto,
+            venta,
+            "VUELTOS"
+          )
         : null;
 
+      // CONSULTAR LAS TASAS DE LA FECHA DE LA VENTA
       const inicio = new Date(
         `${diaComercial(fecha)}T00:00:00.000Z`
       );
@@ -656,13 +801,15 @@ export async function guardarOperacionCompleta(req, res) {
         inicio.getTime() + 86400000
       );
 
-      const tasa = await Tasas.findOne({
-        fecha: {
-          $gte: inicio,
-          $lt: fin
-        },
-        ...porSede(sede)
-      }).session(session);
+      const tasa = await Tasas
+        .findOne({
+          fecha: {
+            $gte: inicio,
+            $lt: fin
+          },
+          ...porSede(sede)
+        })
+        .session(session);
 
       if (
         !tasa ||
@@ -675,7 +822,7 @@ export async function guardarOperacionCompleta(req, res) {
         );
       }
 
-      const aUSD = movimiento => {
+      const aUSD = (movimiento) => {
         if (!movimiento) return 0;
 
         const dolares =
@@ -700,7 +847,8 @@ export async function guardarOperacionCompleta(req, res) {
       };
 
       const neto =
-        aUSD(pagoDatos) + aUSD(vueltoDatos);
+        aUSD(pagoDatos) +
+        aUSD(vueltoDatos);
 
       if (
         !Number.isFinite(neto) ||
@@ -723,35 +871,43 @@ export async function guardarOperacionCompleta(req, res) {
         : total;
 
       pago = pagoAnterior || new Moneda();
+
       pago.set(pagoDatos);
 
       await pago.save({ session });
 
       if (vueltoDatos) {
         vuelto = vueltoAnterior || new Moneda();
+
         vuelto.set(vueltoDatos);
 
         await vuelto.save({ session });
       } else if (vueltoAnterior) {
-        await Moneda.deleteOne({
-          _id: vueltoAnterior._id
-        }).session(session);
+        await Moneda
+          .deleteOne({
+            _id: vueltoAnterior._id
+          })
+          .session(session);
       }
     }
-
+        // GUARDAR LA FACTURA
     if (existente) {
       venta.increment();
     }
 
     await venta.save({ session });
 
+    // REEMPLAZAR LOS RENGLONES AL CORREGIR UNA VENTA
     if (existente) {
-      await Vendidos.deleteMany({
-        factura,
-        ...porSede(sede)
-      }).session(session);
+      await Vendidos
+        .deleteMany({
+          factura,
+          ...porSede(sede)
+        })
+        .session(session);
     }
 
+    // GUARDAR PRODUCTOS, COSTOS Y ASIGNACIONES DE HUEVOS
     for (const linea of lineas) {
       await new Vendidos({
         ...linea,
@@ -759,6 +915,7 @@ export async function guardarOperacionCompleta(req, res) {
       }).save({ session });
     }
 
+    // IDENTIFICAR LA OPERACIÓN PARA RECONOCER REINTENTOS
     await Ventas.collection.updateOne(
       {
         _id: venta._id
@@ -766,10 +923,13 @@ export async function guardarOperacionCompleta(req, res) {
       {
         $set: {
           ultimaOperacionId: body.operacionId,
-          ultimaOperacionUsuario: req.usuarioCaja._id
+          ultimaOperacionUsuario:
+            req.usuarioCaja._id
         }
       },
-      { session }
+      {
+        session
+      }
     );
 
     return res.json({

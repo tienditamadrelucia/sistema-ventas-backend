@@ -1,6 +1,7 @@
 import express from "express";
 import Entrada from "../models/Entrada.js";
 import Producto from "../models/Producto.js";
+import { protegerMovimientoHuevos } from "../utils/inventarioHuevos.js";
 
 const router = express.Router();
 
@@ -52,7 +53,7 @@ router.get("/", async (req, res) => {
 // -------------------------------------------------------------
 // POST - Crear entrada
 // -------------------------------------------------------------
-router.post("/", async (req, res) => {
+router.post("/", protegerMovimientoHuevos, async (req, res) => {
   try {
         if (req.body.observacion === "COMPRAS") {
       return res.status(400).json({
@@ -157,7 +158,7 @@ const sedeFinal = sede === "MONASTERIO" ? "MONASTERIO" : "TIENDITA";
 // -------------------------------------------------------------
 // PUT - Actualizar entrada
 // -------------------------------------------------------------
-router.put("/:id", async (req, res) => {
+router.put("/:id", protegerMovimientoHuevos, async (req, res) => {
   try {
         const entradaActual = await Entrada.findById(req.params.id);
 
@@ -316,7 +317,7 @@ const sedeFinal = sede === "MONASTERIO" ? "MONASTERIO" : "TIENDITA";
 // -------------------------------------------------------------
 // DELETE - Eliminar entrada
 // -------------------------------------------------------------
-router.delete("/:id", async (req, res) => {
+router.delete("/:id", protegerMovimientoHuevos, async (req, res) => {
   try {
     const entrada = await Entrada.findById(req.params.id);
 

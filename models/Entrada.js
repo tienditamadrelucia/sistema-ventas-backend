@@ -51,15 +51,13 @@ const entradaSchema = new mongoose.Schema(
       default: "N"
     },
 
-    // Gasto que generó esta entrada.
-    // Las entradas anteriores no necesitan este campo.
+    // COMPRA PARA REVENTA
     gastoId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Gastos",
       default: undefined
     },
 
-    // Datos de la compra en su moneda original.
     monedaCompra: {
       type: String,
       enum: ["D", "P", "Bs"],
@@ -72,15 +70,13 @@ const entradaSchema = new mongoose.Schema(
       default: undefined
     },
 
-    // Unidades de la moneda original por cada dólar.
     tasaCambioCompra: {
       type: Number,
       min: 0,
       default: undefined
     },
 
-    // Vinculación con la producción de pollos.
-    // Las entradas anteriores conservan sus datos.
+    // PRODUCCIÓN Y ENVÍOS DE POLLOS
     loteId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "LoteCrianza",
@@ -110,11 +106,75 @@ const entradaSchema = new mongoose.Schema(
       default: null
     },
 
+    // PRODUCCIÓN Y RECEPCIÓN DE HUEVOS
+    grupoGallinasId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "GrupoGallinas",
+      default: undefined
+    },
+
+    movimientoHuevosId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "MovimientoHuevos",
+      default: undefined
+    },
+
+    huevosUnidades: {
+      type: Number,
+      min: 1,
+      default: undefined,
+      validate: {
+        validator: Number.isSafeInteger,
+        message:
+          "La cantidad de huevos debe ser un número entero."
+      }
+    }
   },
   {
     timestamps: true
   }
-  
 );
 
-export default mongoose.model("Entrada", entradaSchema);
+// COMPROBAR LAS ENTRADAS VINCULADAS A HUEVOS
+entradaSchema.pre("validate", function () {
+  const esEntradaHuevos =
+    this.movimientoHuevosId ||
+    this.grupoGallinasId ||
+    this.huevosUnidades !== undefined;
+
+  if (!esEntradaHuevos) return;
+
+  if (
+    !this.movimientoHuevosId ||
+    !this.grupoGallinasId ||
+    !Number.isSafeInteger(this.huevosUnidades) ||
+    this.huevosUnidades < 1 ||
+    Math.abs(
+      this.cantidad * 30 - this.huevosUnidades
+    ) > 0.00001 ||
+    this.loteId ||
+    this.produccionId ||
+    this.envioId ||
+    this.gastoId
+  ) {
+    throw new Error(
+      "La entrada de huevos no coincide con su " +
+      "registro de producción o recepción."
+    );
+  }
+});
+
+entradaSchema.index({
+  grupoGallinasId: 1,
+  sede: 1,
+  fecha: 1
+});
+
+entradaSchema.index({
+  movimientoHuevosId: 1
+});
+
+export default mongoose.model(
+  "Entrada",
+  entradaSchema
+);

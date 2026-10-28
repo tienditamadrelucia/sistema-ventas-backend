@@ -8,22 +8,17 @@ import {
 const router = express.Router();
 
 function intentaAsignarLotes(body = {}) {
-  return Object.prototype.hasOwnProperty.call(
-    body,
-    "asignacionesLotes"
+  return (
+    Object.prototype.hasOwnProperty.call(
+      body,
+      "asignacionesLotes"
+    ) ||
+    Object.prototype.hasOwnProperty.call(
+      body,
+      "asignacionesGallinas"
+    )
   );
 }
-
-router.post(
-  "/compra-reventa",
-  protegerEscrituras(async (req) => [
-    {
-      fecha: req.body.fecha,
-      sede: req.body.sede
-    }
-  ]),
-  guardarCompraReventa
-);
 
 const CLASIFICACIONES_VALIDAS = [
   "SIN_CLASIFICAR",
@@ -373,7 +368,10 @@ router.put("/:id", async (req, res) => {
   });
 }
 
-if (gastoActual.asignacionesLotes?.length) {
+if (
+  gastoActual.asignacionesLotes?.length ||
+  gastoActual.asignacionesGallinas?.length
+) {
   return res.status(409).json({
     ok: false,
     mensaje:
@@ -452,9 +450,12 @@ if (gastoActual.asignacionesLotes?.length) {
       cierre: { $ne: "S" },
       clasificacion: { $ne: "COMPRA_REVENTA" },
       compraReventa: null,
-      "asignacionesLotes.0": {
-        $exists: false
-      }
+      "asignacionesGallinas.0": {
+  $exists: false
+},
+"asignacionesLotes.0": {
+  $exists: false
+}
     },
     {
       $set: {
@@ -487,11 +488,6 @@ if (gastoActual.asignacionesLotes?.length) {
   }
 ])
 
-    res.json({
-      ok: true,
-      gasto: actualizado
-    });
-
     if (!actualizado) {
   return res.status(409).json({
     ok: false,
@@ -499,6 +495,11 @@ if (gastoActual.asignacionesLotes?.length) {
       "El gasto cambió mientras se intentaba modificar. Actualice la lista."
   });
 }
+
+return res.json({
+  ok: true,
+  gasto: actualizado
+});
 
   } catch (error) {
     console.error("Error actualizando gasto:", error);
@@ -524,7 +525,10 @@ router.delete("/:id", async (req, res) => {
       });
     }
 
-    if (gasto.asignacionesLotes?.length) {
+    if (
+  gasto.asignacionesLotes?.length ||
+  gasto.asignacionesGallinas?.length
+) {
   return res.status(409).json({
     ok: false,
     mensaje:
@@ -555,9 +559,12 @@ router.delete("/:id", async (req, res) => {
   cierre: { $ne: "S" },
   clasificacion: { $ne: "COMPRA_REVENTA" },
   compraReventa: null,
-  "asignacionesLotes.0": {
-    $exists: false
-  }
+  "asignacionesGallinas.0": {
+  $exists: false
+},
+"asignacionesLotes.0": {
+  $exists: false
+}
 });
 
     if (!eliminado) {

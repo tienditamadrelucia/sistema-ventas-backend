@@ -2,6 +2,7 @@
 import express from "express";
 import dbSalidas from "../models/dbSalidas.js";
 import Producto from "../models/Producto.js";
+import { protegerMovimientoHuevos } from "../utils/inventarioHuevos.js";
 import {
   protegerEscrituras,
   diaComercial,
@@ -171,7 +172,7 @@ router.get("/reporte", async (req, res) => {
 
 
 // POST crear
-router.post("/", protegerSalida, async (req, res) => {
+router.post("/", protegerSalida, protegerMovimientoHuevos, async (req, res) => {
   try {
     const {
       fecha,
@@ -242,7 +243,7 @@ router.post("/", protegerSalida, async (req, res) => {
 // =====================================================
 // MODIFICAR SALIDAS COMUNES
 // =====================================================
-router.put("/:id", protegerSalida, async (req, res) => {
+router.put("/:id", protegerSalida, protegerMovimientoHuevos, async (req, res) => {
   try {
     const salida = await dbSalidas
       .findById(req.params.id)
@@ -358,7 +359,7 @@ router.put("/:id", protegerSalida, async (req, res) => {
 // =====================================================
 // ELIMINAR SALIDAS COMUNES
 // =====================================================
-router.delete("/:id", protegerSalida, async (req, res) => {
+router.delete("/:id", protegerSalida, protegerMovimientoHuevos, async (req, res) => {
   try {
     const salida = await dbSalidas
       .findById(req.params.id)

@@ -21,7 +21,6 @@ const salidaSchema = new mongoose.Schema(
       type: Number
     },
 
-    // En los productos de pollo, la cantidad es en kilos.
     cantidad: {
       type: Number,
       required: true
@@ -44,14 +43,13 @@ const salidaSchema = new mongoose.Schema(
       default: "N"
     },
 
-    // Vinculación con el lote de producción.
+    // PRODUCCIÓN, CONSUMO Y ENVÍOS DE POLLOS
     loteId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "LoteCrianza",
       default: null
     },
 
-    // Registro de consumo que generó esta salida.
     consumoId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "ConsumoLote",
@@ -73,12 +71,64 @@ const salidaSchema = new mongoose.Schema(
     cantidadPresentaciones: {
       type: Number,
       default: null
+    },
+
+    // CONSUMO, PÉRDIDAS Y ENVÍOS DE HUEVOS
+    grupoGallinasId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "GrupoGallinas",
+      default: undefined
+    },
+
+    movimientoHuevosId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "MovimientoHuevos",
+      default: undefined
+    },
+
+    huevosUnidades: {
+      type: Number,
+      min: 1,
+      default: undefined,
+      validate: {
+        validator: Number.isSafeInteger,
+        message:
+          "La cantidad de huevos debe ser un número entero."
+      }
     }
   },
   {
     timestamps: true
   }
 );
+
+// COMPROBAR LAS SALIDAS VINCULADAS A HUEVOS
+salidaSchema.pre("validate", function () {
+  const esSalidaHuevos =
+    this.movimientoHuevosId ||
+    this.grupoGallinasId ||
+    this.huevosUnidades !== undefined;
+
+  if (!esSalidaHuevos) return;
+
+  if (
+    !this.movimientoHuevosId ||
+    !this.grupoGallinasId ||
+    !Number.isSafeInteger(this.huevosUnidades) ||
+    this.huevosUnidades < 1 ||
+    Math.abs(
+      this.cantidad * 30 - this.huevosUnidades
+    ) > 0.00001 ||
+    this.loteId ||
+    this.consumoId ||
+    this.envioId
+  ) {
+    throw new Error(
+      "La salida de huevos no coincide con su " +
+      "registro de consumo o envío."
+    );
+  }
+});
 
 salidaSchema.index({
   loteId: 1,
@@ -88,6 +138,16 @@ salidaSchema.index({
 
 salidaSchema.index({
   consumoId: 1
+});
+
+salidaSchema.index({
+  grupoGallinasId: 1,
+  sede: 1,
+  fecha: 1
+});
+
+salidaSchema.index({
+  movimientoHuevosId: 1
 });
 
 export default mongoose.model(

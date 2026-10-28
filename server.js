@@ -39,6 +39,10 @@ import path from "path";
 import { fileURLToPath } from "url";
 import lotesCrianzaRoutes from "./routes/lotesCrianza.js";
 import enviosLoteRoutes from "./routes/enviosLote.js";
+import huevosRoutes from "./routes/huevos.js";
+import {
+  protegerVendidoHuevos
+} from "./utils/inventarioHuevos.js";
 
 const app = express();
 app.set("trust proxy", 1);
@@ -123,7 +127,7 @@ app.get("/api/ping", (req, res) => {
     app.use("/api/tasas", tasas);
     //app.use("/api/ventas", ventasRouter);
     //app.use("/api/vendidos", vendidosRouter);
-    app.use("/api/vendidos", vendidos);    
+    app.use("/api/vendidos", protegerVendidoHuevos, vendidos);  
     app.use("/api/ventas", ventas);    
     app.use("/api/moneda", moneda);
     app.use("/api/facturas", reservaRoutes);
@@ -138,6 +142,7 @@ app.get("/api/ping", (req, res) => {
     app.use("/api/participaciones", participacionesRoutes);
     app.use("/api/lotes-crianza", lotesCrianzaRoutes);
     app.use("/api/envios-lote", enviosLoteRoutes);
+    app.use("/api/huevos", huevosRoutes);
 
     // ⭐ 4. MANEJO GLOBAL DE ERRORES
     app.use((err, req, res, next) => {

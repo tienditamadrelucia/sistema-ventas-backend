@@ -1,5 +1,6 @@
 import mongoose from "mongoose";
 
+// IMPUESTOS Y RECARGOS DE LAS COMPRAS
 const cargoCompraSchema = new mongoose.Schema(
   {
     concepto: {
@@ -20,8 +21,6 @@ const cargoCompraSchema = new mongoose.Schema(
       min: 0
     },
 
-    // SUBTOTAL: solo los productos.
-    // TOTAL_ACUMULADO: productos y cargos anteriores.
     baseCalculo: {
       type: String,
       enum: ["SUBTOTAL", "TOTAL_ACUMULADO"],
@@ -33,8 +32,6 @@ const cargoCompraSchema = new mongoose.Schema(
       default: true
     },
 
-    // Importe calculado por el servidor
-    // en la moneda original de la compra.
     montoMoneda: {
       type: Number,
       required: true,
@@ -46,6 +43,7 @@ const cargoCompraSchema = new mongoose.Schema(
   }
 );
 
+// PRODUCTOS INCLUIDOS EN UNA COMPRA PARA REVENTA
 const detalleCompraSchema = new mongoose.Schema(
   {
     productoId: {
@@ -76,7 +74,6 @@ const detalleCompraSchema = new mongoose.Schema(
       min: 0
     },
 
-    // Precio por unidad en la moneda del gasto.
     costoUnitarioMoneda: {
       type: Number,
       required: true,
@@ -89,7 +86,6 @@ const detalleCompraSchema = new mongoose.Schema(
       min: 0
     },
 
-    // Equivalente en dólares al registrar la compra.
     costoUnitarioUSD: {
       type: Number,
       required: true,
@@ -102,28 +98,24 @@ const detalleCompraSchema = new mongoose.Schema(
       min: 0
     },
 
-        // Importe del producto antes de impuestos y recargos.
     subtotalBaseMoneda: {
       type: Number,
       min: 0,
       default: undefined
     },
 
-    // Parte de los cargos que aumenta el costo del producto.
     cargosCostoMoneda: {
       type: Number,
       min: 0,
       default: undefined
     },
 
-    // Parte pagada que no se incorpora al costo.
     cargosNoCostoMoneda: {
       type: Number,
       min: 0,
       default: undefined
     },
 
-    // Base más los cargos incorporados al costo.
     costoTotalMoneda: {
       type: Number,
       min: 0,
@@ -146,18 +138,14 @@ const detalleCompraSchema = new mongoose.Schema(
     _id: false
   }
 );
-
+// COMPRA COMPLETA PARA REVENTA
 const compraReventaSchema = new mongoose.Schema(
   {
-    // Identifica la operación para evitar duplicarla
-    // si se vuelve a enviar la misma solicitud.
     claveOperacion: {
       type: String,
       required: true
     },
 
-    // Unidades de la moneda del gasto por cada dólar.
-    // Si la compra es en dólares, la tasa es 1.
     tasaCambio: {
       type: Number,
       required: true,
@@ -170,7 +158,7 @@ const compraReventaSchema = new mongoose.Schema(
       min: 0
     },
 
-        subtotalProductosMoneda: {
+    subtotalProductosMoneda: {
       type: Number,
       min: 0,
       default: undefined
@@ -204,13 +192,15 @@ const compraReventaSchema = new mongoose.Schema(
       type: [cargoCompraSchema],
       default: undefined
     },
-    
+
     detalles: {
       type: [detalleCompraSchema],
       required: true,
       validate: {
-        validator: (detalles) => detalles.length > 0,
-        message: "La compra debe incluir productos."
+        validator: (detalles) =>
+          detalles.length > 0,
+        message:
+          "La compra debe incluir productos."
       }
     }
   },
@@ -219,6 +209,7 @@ const compraReventaSchema = new mongoose.Schema(
   }
 );
 
+// ASIGNACIÓN DE GASTOS A LOTES DE POLLOS
 const asignacionLoteSchema = new mongoose.Schema(
   {
     loteId: {
@@ -250,8 +241,6 @@ const asignacionLoteSchema = new mongoose.Schema(
       required: true
     },
 
-    // Parte del gasto asignada al lote.
-    // Usa la misma moneda del gasto original.
     montoAsignado: {
       type: Number,
       required: true,
@@ -288,6 +277,66 @@ const asignacionLoteSchema = new mongoose.Schema(
   }
 );
 
+// ASIGNACIÓN DE GASTOS A GRUPOS DE GALLINAS
+const asignacionGallinasSchema = new mongoose.Schema(
+  {
+    grupoId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "GrupoGallinas",
+      required: true
+    },
+
+    concepto: {
+      type: String,
+      required: true,
+      enum: [
+        "COMPRA_GALLINAS",
+        "ALIMENTO",
+        "MEDICAMENTOS_VACUNAS",
+        "CAMA_LIMPIEZA",
+        "ATENCION_VETERINARIA",
+        "EMPAQUE",
+        "TRANSPORTE",
+        "OTROS"
+      ]
+    },
+
+    montoAsignado: {
+      type: Number,
+      required: true,
+      min: 0.01,
+      validate: {
+        validator: (valor) =>
+          Number.isFinite(valor) &&
+          Number.isSafeInteger(
+            Math.round(valor * 100)
+          ) &&
+          Math.abs(
+            valor * 100 -
+            Math.round(valor * 100)
+          ) < 0.000001,
+        message:
+          "Use un importe positivo con hasta dos decimales."
+      }
+    },
+
+    asignadoPor: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Usuario",
+      required: true
+    },
+
+    fechaAsignacion: {
+      type: Date,
+      required: true,
+      default: Date.now
+    }
+  },
+  {
+    _id: false
+  }
+);
+// MODELO PRINCIPAL DE GASTOS
 const dbGastosSchema = new mongoose.Schema({
   fecha: {
     type: Date,
@@ -358,52 +407,119 @@ const dbGastosSchema = new mongoose.Schema({
     default: "N"
   },
 
-  // Distribución del gasto entre lotes de producción.
-// No crea pagos adicionales ni cambia la sede que paga.
-asignacionesLotes: {
-  type: [asignacionLoteSchema],
-  default: undefined,
-  validate: {
-    validator: function (asignaciones) {
-      if (!asignaciones || asignaciones.length === 0) {
-        return true;
-      }
+  // ASIGNACIONES A LOTES DE POLLOS
+  asignacionesLotes: {
+    type: [asignacionLoteSchema],
+    default: undefined,
 
-      const lotes = asignaciones.map(
-        (asignacion) => String(asignacion.loteId)
-      );
+    validate: {
+      validator: function (asignaciones) {
+        if (!asignaciones || asignaciones.length === 0) {
+          return true;
+        }
 
-      if (new Set(lotes).size !== lotes.length) {
-        return false;
-      }
+        const lotes = asignaciones.map(
+          (asignacion) =>
+            String(asignacion.loteId)
+        );
 
-      const totalCentavos = asignaciones.reduce(
-        (suma, asignacion) =>
-          suma +
-          Math.round(asignacion.montoAsignado * 100),
-        0
-      );
+        if (new Set(lotes).size !== lotes.length) {
+          return false;
+        }
 
-      const montoCentavos = Math.round(
-        Number(this.monto) * 100
-      );
+        const totalCentavos = asignaciones.reduce(
+          (suma, asignacion) =>
+            suma +
+            Math.round(
+              asignacion.montoAsignado * 100
+            ),
+          0
+        );
 
-      return (
-        Number.isSafeInteger(totalCentavos) &&
-        Number.isSafeInteger(montoCentavos) &&
-        totalCentavos <= montoCentavos
-      );
-    },
-    message:
-      "No puede repetir un lote ni asignar más que el monto total del gasto."
-  }
-},
+        const montoCentavos = Math.round(
+          Number(this.monto) * 100
+        );
 
-  // Solo se completa en las nuevas compras para reventa.
+        return (
+          Number.isSafeInteger(totalCentavos) &&
+          Number.isSafeInteger(montoCentavos) &&
+          totalCentavos <= montoCentavos
+        );
+      },
+
+      message:
+        "No puede repetir un lote ni asignar " +
+        "más que el monto total del gasto."
+    }
+  },
+
+  // ASIGNACIONES A GRUPOS DE GALLINAS
+  asignacionesGallinas: {
+    type: [asignacionGallinasSchema],
+    default: undefined
+  },
+
+  // COMPRAS PARA REVENTA
   compraReventa: {
     type: compraReventaSchema,
     default: undefined
   }
 });
 
-export default mongoose.model("Gastos", dbGastosSchema);
+// DETECTAR CAMBIOS CONCURRENTES AL GUARDAR
+dbGastosSchema.set(
+  "optimisticConcurrency",
+  true
+);
+
+// VALIDAR TODAS LAS ASIGNACIONES DEL GASTO
+dbGastosSchema.pre("validate", function () {
+  const gallinas = this.asignacionesGallinas || [];
+
+  const grupos = gallinas.map(
+    (asignacion) =>
+      String(asignacion.grupoId)
+  );
+
+  if (new Set(grupos).size !== grupos.length) {
+    throw new Error(
+      "No puede repetir un grupo en el mismo gasto."
+    );
+  }
+
+  const asignaciones = [
+    ...(this.asignacionesLotes || []),
+    ...gallinas
+  ];
+
+  const totalCentavos = asignaciones.reduce(
+    (suma, asignacion) =>
+      suma +
+      Math.round(
+        asignacion.montoAsignado * 100
+      ),
+    0
+  );
+
+  const montoCentavos = Math.round(
+    Number(this.monto) * 100
+  );
+
+  if (
+    !Number.isSafeInteger(totalCentavos) ||
+    (
+      asignaciones.length > 0 &&
+      totalCentavos > montoCentavos
+    )
+  ) {
+    throw new Error(
+      "Las asignaciones a pollos y gallinas " +
+      "no pueden superar juntas el importe del gasto."
+    );
+  }
+});
+
+export default mongoose.model(
+  "Gastos",
+  dbGastosSchema
+);
