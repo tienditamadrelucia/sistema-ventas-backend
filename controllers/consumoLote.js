@@ -662,3 +662,9 @@ export async function registrarConsumoLote(req, res) {
     if (session) await session.endSession();
   }
 }
+
+export {
+  cargarSaldo as consultarSaldoLote,
+  normalizarDetalles as normalizarDetalleRetiroLote,
+  fechaValida as validarFechaMovimientoLote
+};

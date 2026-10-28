@@ -38,6 +38,7 @@ import MongoStore from "connect-mongo";
 import path from "path";
 import { fileURLToPath } from "url";
 import lotesCrianzaRoutes from "./routes/lotesCrianza.js";
+import enviosLoteRoutes from "./routes/enviosLote.js";
 
 const app = express();
 app.set("trust proxy", 1);
@@ -136,7 +137,8 @@ app.get("/api/ping", (req, res) => {
     app.use("/api/actividad-productiva", actividadProductivaRoutes);
     app.use("/api/participaciones", participacionesRoutes);
     app.use("/api/lotes-crianza", lotesCrianzaRoutes);
-    
+    app.use("/api/envios-lote", enviosLoteRoutes);
+
     // ⭐ 4. MANEJO GLOBAL DE ERRORES
     app.use((err, req, res, next) => {
       console.error("ERROR GLOBAL:", err);

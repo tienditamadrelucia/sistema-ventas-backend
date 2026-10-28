@@ -93,6 +93,12 @@ const entradaSchema = new mongoose.Schema(
       default: null
     },
 
+    envioId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "EnvioLote",
+      default: null
+    },
+
     presentacionProduccion: {
       type: String,
       enum: ["PIEZA", "PAQUETE_DOS", "SOLO_PESO"],
