@@ -392,23 +392,59 @@ router.get("/reporte/:desde/:hasta", async (req, res) => {
         ...filtroSede
       });
 
-      const productos = [];
+            const productos = [];
 
       for (const vendido of vendidos) {
         const producto = await Producto.findById(
           vendido.productoId
         );
 
+        // Primero se usa la actividad guardada al vender.
+        // En registros antiguos sin actividad histórica,
+        // se consulta la actividad actual del producto.
+        const actividadHistoricaId =
+          vendido.actividadProductiva || null;
+
+        const actividadId =
+          actividadHistoricaId ||
+          producto?.actividadProductiva ||
+          null;
+
+        const actividad = actividadId
+          ? await ActividadProductiva.findById(
+              actividadId
+            )
+              .select("_id descripcion")
+              .lean()
+          : null;
+
         productos.push({
           codigo: producto?.codigo || "N/A",
+
           descripcion:
             producto?.descripcion ||
             "Producto no encontrado",
+
           precioSistema: producto?.venta || 0,
+
           cantidad: vendido.cantidad,
           precioVenta: vendido.precio,
           dscto: vendido.dscto,
-          total: vendido.total
+          total: vendido.total,
+
+          actividadProductiva: actividadId
+            ? {
+                id: String(actividadId),
+
+                descripcion:
+                  actividad?.descripcion ||
+                  "ACTIVIDAD NO ENCONTRADA",
+
+                origen: actividadHistoricaId
+                  ? "HISTORICA"
+                  : "PRODUCTO_ACTUAL"
+              }
+            : null
         });
       }
 
