@@ -11,8 +11,16 @@ import Salida from "../models/dbSalidas.js";
 import Vendidos from "../models/dbVendidos.js";
 import Producto from "../models/Producto.js";
 
-import { fallo } from "./controlCaja.js";
-import { comprobarMesHuevos } from "./periodoHuevos.js";
+import {
+  fallo,
+  protegerEscrituras,
+  comprobarAcceso
+} from "./controlCaja.js";
+
+import {
+  comprobarMesHuevos,
+  comprobarDiaHuevos
+} from "./periodoHuevos.js";
 
 import {
   eventosHuevos,
@@ -419,6 +427,8 @@ export async function prepararVentaHuevos({
         sinGrupo -= asignacion.unidades;
       } else {
         eventos.push({
+
+
           grupoId: String(asignacion.grupoId),
           sede,
           fecha,
@@ -442,21 +452,13 @@ const identificador = (valor) =>
   String(valor?._id || valor || "").toLowerCase();
 
 // PROTEGER ENTRADAS Y SALIDAS CONTROLADAS
-export async function protegerMovimientoHuevos(
-  req,
-  res,
-  next
-) {
+export async function protegerMovimientoHuevos(req, res, next) {
   try {
-    if (
-      !["POST", "PUT", "DELETE"].includes(req.method)
-    ) {
+    if (!["POST", "PUT", "DELETE"].includes(req.method)) {
       return next();
     }
 
-    const config = await configuracionHuevos(
-      req.cajaMongo
-    );
+    const config = await configuracionHuevos(req.cajaMongo);
 
     if (!config) return next();
 
@@ -465,24 +467,146 @@ export async function protegerMovimientoHuevos(
       config.productoTienditaId
     ].map(identificador);
 
-    const Modelo = req.baseUrl.includes("entradas")
-      ? Entrada
-      : Salida;
+    const esEntrada = req.baseUrl.includes("entradas");
+    const Modelo = esEntrada ? Entrada : Salida;
 
     const anterior =
-      req.params.id &&
-      mongoose.isValidObjectId(req.params.id)
-        ? await Modelo
-            .findById(req.params.id)
+      req.params.id && mongoose.isValidObjectId(req.params.id)
+        ? await Modelo.findById(req.params.id)
             .session(req.cajaMongo || null)
             .lean()
         : null;
 
-    if (
-      anterior?.movimientoHuevosId ||
+    const vinculado = anterior && (
+      anterior.movimientoHuevosId ||
+      anterior.grupoGallinasId ||
+      anterior.huevosUnidades != null ||
+      anterior.produccionId ||
+      anterior.loteId ||
+      anterior.envioId ||
+      anterior.consumoId ||
+      anterior.gastoId
+    );
+
+    const esHuevo =
       ids.includes(identificador(anterior?.productoId)) ||
-      ids.includes(identificador(req.body?.productoId))
+      ids.includes(identificador(req.body?.productoId));
+
+    // Permitir eliminar entradas manuales sin vinculaciones.
+    if (
+      esEntrada &&
+      req.method === "DELETE" &&
+      anterior &&
+      esHuevo &&
+      !vinculado
     ) {
+      const sede = anterior.sede === "MONASTERIO"
+        ? "MONASTERIO"
+        : "TIENDITA";
+
+      // Eliminar dentro de una transacción con control de caja.
+      if (!req.cajaMongo?.inTransaction()) {
+        return protegerEscrituras(async () => [
+          { fecha: anterior.fecha, sede }
+        ])(
+          req,
+          res,
+          () => protegerMovimientoHuevos(req, res, next)
+        );
+      }
+
+      comprobarAcceso(req, sede);
+
+      if (
+        !["ADMINISTRADOR", "SUPERVISOR"].includes(
+          req.usuarioCaja?.rol
+        )
+      ) {
+        throw fallo(
+          403,
+          "Debe dirigirse al Supervisor para eliminar esta entrada."
+        );
+      }
+
+      if (
+        anterior.cierre === "S" ||
+        anterior.observacion === "COMPRAS"
+      ) {
+        throw fallo(
+          409,
+          "No puede eliminar una compra ni una entrada de un período cerrado."
+        );
+      }
+
+      if (
+        identificador(anterior.productoId) !==
+        identificador(productoDeHuevos(config, sede))
+      ) {
+        throw fallo(
+          409,
+          "El producto no corresponde a la sede de la entrada."
+        );
+      }
+
+      await bloquearRegistroHuevos(req.cajaMongo);
+
+      await comprobarDiaHuevos(
+        dia(anterior.fecha),
+        sede,
+        req.cajaMongo
+      );
+
+      const cantidad = Number(anterior.cantidad);
+      const unidades = Math.round(cantidad * 30);
+
+      if (
+        !Number.isFinite(cantidad) ||
+        cantidad <= 0 ||
+        !Number.isSafeInteger(unidades) ||
+        Math.abs(cantidad * 30 - unidades) > 0.00001
+      ) {
+        throw fallo(
+          409,
+          "Revise la cantidad de esta entrada: debe representar huevos enteros."
+        );
+      }
+
+      const general = await stockGeneralHuevos(
+        config,
+        sede,
+        req.cajaMongo
+      );
+
+      const { eventos } = await cargarRegistroHuevos(
+        req.cajaMongo
+      );
+
+      const saldoGrupos = eventos
+        .filter(
+          evento => evento.sede === sede && evento.grupoId
+        )
+        .reduce(
+          (suma, evento) => suma + evento.unidades,
+          0
+        );
+
+      const saldoRestante = general.unidades - unidades;
+
+      if (
+        saldoRestante < 0 ||
+        saldoRestante < saldoGrupos
+      ) {
+        throw fallo(
+          409,
+          "No puede eliminar esta entrada: dejaría existencias " +
+          "negativas o afectaría huevos controlados por grupos."
+        );
+      }
+
+      return next();
+    }
+
+    if (anterior?.movimientoHuevosId || esHuevo) {
       throw fallo(
         409,
         "Registre o corrija este movimiento desde el módulo de huevos."
@@ -491,11 +615,14 @@ export async function protegerMovimientoHuevos(
 
     return next();
   } catch (error) {
+    const mensaje = error.estado
+      ? error.message
+      : "No se pudo comprobar el movimiento de huevos.";
+
     return res.status(error.estado || 500).json({
       ok: false,
-      mensaje: error.estado
-        ? error.message
-        : "No se pudo comprobar el movimiento de huevos."
+      error: mensaje,
+      mensaje
     });
   }
 }
