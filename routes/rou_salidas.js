@@ -8,6 +8,9 @@ import {
   diaComercial,
   fallo
 } from "../utils/controlCaja.js";
+import {
+  protegerDocumentoInventario
+} from "../utils/protegerDocumentoInventario.js";
 
 const router = express.Router();
 const filtroPorSede = (sede) => {
@@ -243,7 +246,7 @@ router.post("/", protegerSalida, protegerMovimientoHuevos, async (req, res) => {
 // =====================================================
 // MODIFICAR SALIDAS COMUNES
 // =====================================================
-router.put("/:id", protegerSalida, protegerMovimientoHuevos, async (req, res) => {
+router.put("/:id", protegerDocumentoInventario, protegerSalida, protegerMovimientoHuevos, async (req, res) => {
   try {
     const salida = await dbSalidas
       .findById(req.params.id)
@@ -359,7 +362,7 @@ router.put("/:id", protegerSalida, protegerMovimientoHuevos, async (req, res) =>
 // =====================================================
 // ELIMINAR SALIDAS COMUNES
 // =====================================================
-router.delete("/:id", protegerSalida, protegerMovimientoHuevos, async (req, res) => {
+router.put("/:id", protegerDocumentoInventario, protegerSalida, protegerMovimientoHuevos, async (req, res) => {
   try {
     const salida = await dbSalidas
       .findById(req.params.id)

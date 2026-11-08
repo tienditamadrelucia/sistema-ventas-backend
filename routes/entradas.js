@@ -2,6 +2,9 @@ import express from "express";
 import Entrada from "../models/Entrada.js";
 import Producto from "../models/Producto.js";
 import { protegerMovimientoHuevos } from "../utils/inventarioHuevos.js";
+import {
+  protegerDocumentoInventario
+} from "../utils/protegerDocumentoInventario.js";
 
 const router = express.Router();
 
@@ -158,7 +161,7 @@ const sedeFinal = sede === "MONASTERIO" ? "MONASTERIO" : "TIENDITA";
 // -------------------------------------------------------------
 // PUT - Actualizar entrada
 // -------------------------------------------------------------
-router.put("/:id", protegerMovimientoHuevos, async (req, res) => {
+router.put("/:id", protegerDocumentoInventario, protegerMovimientoHuevos, async (req, res) => {
   try {
         const entradaActual = await Entrada.findById(req.params.id);
 
@@ -317,7 +320,7 @@ const sedeFinal = sede === "MONASTERIO" ? "MONASTERIO" : "TIENDITA";
 // -------------------------------------------------------------
 // DELETE - Eliminar entrada
 // -------------------------------------------------------------
-router.delete("/:id", protegerMovimientoHuevos, async (req, res) => {
+router.delete("/:id", protegerDocumentoInventario, protegerMovimientoHuevos, async (req, res) => {
   try {
     const entrada = await Entrada.findById(req.params.id);
 

@@ -43,6 +43,7 @@ import huevosRoutes from "./routes/huevos.js";
 import {
   protegerVendidoHuevos
 } from "./utils/inventarioHuevos.js";
+import documentosInventarioRoutes from "./routes/documentosInventario.js";
 
 const app = express();
 app.set("trust proxy", 1);
@@ -143,6 +144,7 @@ app.get("/api/ping", (req, res) => {
     app.use("/api/lotes-crianza", lotesCrianzaRoutes);
     app.use("/api/envios-lote", enviosLoteRoutes);
     app.use("/api/huevos", huevosRoutes);
+    app.use("/api/documentos-inventario", documentosInventarioRoutes);
 
     // ⭐ 4. MANEJO GLOBAL DE ERRORES
     app.use((err, req, res, next) => {
