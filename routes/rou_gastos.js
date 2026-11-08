@@ -7,6 +7,20 @@ import {
 
 const router = express.Router();
 
+// ==========================================
+// REGISTRAR COMPRA PARA REVENTA
+// ==========================================
+router.post(
+  "/compra-reventa",
+  protegerEscrituras(async (req) => [
+    {
+      fecha: req.body.fecha,
+      sede: req.body.sede
+    }
+  ]),
+  guardarCompraReventa
+);
+
 function intentaAsignarLotes(body = {}) {
   return (
     Object.prototype.hasOwnProperty.call(
