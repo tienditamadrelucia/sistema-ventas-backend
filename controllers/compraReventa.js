@@ -91,7 +91,8 @@ async function comprobarFechaCompra(
   productoId,
   fecha,
   sede,
-  session
+  session,
+  rol
 ) {
   const finDia = new Date(fecha);
   finDia.setUTCDate(finDia.getUTCDate() + 1);
@@ -102,22 +103,25 @@ async function comprobarFechaCompra(
     ...porSede(sede)
   };
 
-  const entradaPosterior = await Entrada.exists(filtro)
+  const entradaPosterior = await Entrada
+    .exists(filtro)
     .session(session);
 
-  const salidaPosterior = await Salidas.exists(filtro)
+  const salidaPosterior = await Salidas
+    .exists(filtro)
     .session(session);
 
   if (entradaPosterior || salidaPosterior) {
     throw fallo(
       409,
-      "Este producto tiene entradas o salidas posteriores a la fecha de compra. No se puede recalcular su costo sin revisar esos movimientos."
+      "Este producto tiene entradas o salidas " +
+      "posteriores a la fecha de compra. " +
+      "Debe revisar esos movimientos antes " +
+      "de regularizar su costo."
     );
   }
 
-  // Los detalles vendidos pueden no tener fecha propia.
-  // Consultamos la fecha de su factura.
-  const ventasPosteriores = await Vendidos.aggregate([
+  const filas = await Vendidos.aggregate([
     {
       $match: {
         productoId,
@@ -127,39 +131,215 @@ async function comprobarFechaCompra(
     {
       $lookup: {
         from: Ventas.collection.name,
+
         let: {
           numeroFactura: "$factura"
         },
+
         pipeline: [
           {
             $match: {
-              fecha: { $gte: finDia },
               ...porSede(sede),
+
               $expr: {
-                $eq: ["$factura", "$$numeroFactura"]
+                $eq: [
+                  "$factura",
+                  "$$numeroFactura"
+                ]
               }
+            }
+          },
+          {
+            $project: {
+              fecha: 1
             }
           }
         ],
-        as: "facturasPosteriores"
+
+        as: "cabeceras"
       }
     },
     {
-      $match: {
-        "facturasPosteriores.0": { $exists: true }
+      $project: {
+        cantidad: 1,
+        factura: 1,
+        cabeceras: 1
       }
-    },
-    {
-      $limit: 1
     }
   ]).session(session);
 
-  if (ventasPosteriores.length > 0) {
+  const posteriores = filas.filter(fila =>
+    fila.cabeceras.some(
+      venta =>
+        new Date(venta.fecha) >= finDia
+    )
+  );
+
+  if (!posteriores.length) {
+    return 0;
+  }
+
+  if (rol !== "ADMINISTRADOR") {
     throw fallo(
       409,
-      "Este producto tiene ventas posteriores a la fecha de compra. No se puede recalcular su costo sin revisar esas ventas."
+      "Este producto tiene ventas posteriores " +
+      "a la fecha de compra. La regularización " +
+      "corresponde a la administradora."
     );
   }
+
+  // No reconstruir cantidades con facturas
+  // faltantes, duplicadas o inválidas.
+  for (const fila of filas) {
+    if (
+      fila.cabeceras.length !== 1 ||
+      !Number.isFinite(
+        new Date(
+          fila.cabeceras[0].fecha
+        ).getTime()
+      ) ||
+      typeof fila.cantidad !== "number" ||
+      !Number.isFinite(fila.cantidad) ||
+      fila.cantidad <= 0
+    ) {
+      throw fallo(
+        409,
+        "Hay ventas sin una factura única y válida. " +
+        "Debe revisarlas antes de regularizar la compra."
+      );
+    }
+
+    const fechaVenta = new Date(
+      fila.cabeceras[0].fecha
+    );
+
+    if (
+      fechaVenta >= fecha &&
+      fechaVenta < finDia
+    ) {
+      throw fallo(
+        409,
+        "Hay ventas del mismo día de la compra. " +
+        "Debe confirmar el orden de esos movimientos " +
+        "antes de recalcular el costo."
+      );
+    }
+  }
+
+  const filtroMismoDia = {
+    productoId,
+
+    fecha: {
+      $gte: fecha,
+      $lt: finDia
+    },
+
+    ...porSede(sede)
+  };
+
+  const entradaMismoDia = await Entrada
+    .exists(filtroMismoDia)
+    .session(session);
+
+  const salidaMismoDia = await Salidas
+    .exists(filtroMismoDia)
+    .session(session);
+
+  if (entradaMismoDia || salidaMismoDia) {
+    throw fallo(
+      409,
+      "Hay otras entradas o salidas del mismo " +
+      "día de la compra. Revise su orden antes " +
+      "de regularizar el costo."
+    );
+  }
+
+  const cantidadPosterior = posteriores.reduce(
+    (suma, fila) =>
+      suma + fila.cantidad,
+    0
+  );
+
+  if (
+    !Number.isFinite(cantidadPosterior) ||
+    cantidadPosterior <= 0
+  ) {
+    throw fallo(
+      409,
+      "No se pudo comprobar la cantidad " +
+      "vendida después de la compra."
+    );
+  }
+
+  return redondear(cantidadPosterior, 3);
+}
+
+function calcularPromedioCompra(
+  existencias,
+  vendidosPosteriores,
+  cantidadCompra,
+  costoAnterior,
+  costoTotalUSD
+) {
+  // Recuperar las unidades vendidas después
+  // para calcular el promedio desde la compra.
+  const base = redondear(
+    existencias + vendidosPosteriores,
+    3
+  );
+
+  const saldoFinal = redondear(
+    existencias + cantidadCompra,
+    3
+  );
+
+  if (
+    !Number.isFinite(base) ||
+    base < 0 ||
+    !Number.isFinite(saldoFinal) ||
+    saldoFinal < 0
+  ) {
+    throw fallo(
+      409,
+      "Revise las existencias: la compra no " +
+      "corrige los saldos negativos del producto."
+    );
+  }
+
+  if (
+    base > 0 &&
+    (
+      !Number.isFinite(costoAnterior) ||
+      costoAnterior <= 0
+    )
+  ) {
+    throw fallo(
+      409,
+      "Debe confirmar el costo de las " +
+      "existencias anteriores a la compra."
+    );
+  }
+
+  const promedio = redondear(
+    (
+      base *
+        (base > 0 ? costoAnterior : 0) +
+      costoTotalUSD
+    ) /
+    (base + cantidadCompra)
+  );
+
+  if (
+    !Number.isFinite(promedio) ||
+    promedio <= 0
+  ) {
+    throw fallo(
+      409,
+      "No se pudo calcular un costo promedio válido."
+    );
+  }
+
+  return promedio;
 }
 
 export async function guardarCompraReventa(req, res) {
@@ -408,12 +588,14 @@ const solicitud = {
         );
       }
 
-      await comprobarFechaCompra(
-        producto._id,
-        fecha,
-        sede,
-        session
-      );
+            const vendidosPosteriores =
+        await comprobarFechaCompra(
+          producto._id,
+          fecha,
+          sede,
+          session,
+          rol
+        );
 
       const entradas = await sumarCantidades(
         Entrada,
@@ -441,24 +623,7 @@ const solicitud = {
         3
       );
 
-      const costoAnterior = Number(producto.costo);
-
-      if (!Number.isFinite(existencias) || existencias < 0) {
-        throw fallo(
-          409,
-          `${producto.descripcion}: revise sus existencias antes de calcular el costo promedio.`
-        );
-      }
-
-      if (
-        existencias > 0 &&
-        (!Number.isFinite(costoAnterior) || costoAnterior <= 0)
-      ) {
-        throw fallo(
-          409,
-          `${producto.descripcion}: debe confirmar el costo de las existencias anteriores.`
-        );
-      }
+      const costoAnterior = Number(producto.costo);   
 
       const subtotalMoneda = linea.subtotalMoneda;
 
@@ -494,14 +659,55 @@ if (
 
 // El promedio incluye únicamente los cargos
 // marcados para incorporarse al costo.
-const costoPromedio = redondear(
-  (
-    existencias *
-      (existencias > 0 ? costoAnterior : 0) +
-    costoTotalUSD
-  ) /
-  (existencias + linea.cantidad)
+const costoPromedio = calcularPromedioCompra(
+  existencias,
+  vendidosPosteriores,
+  linea.cantidad,
+  costoAnterior,
+  costoTotalUSD
 );
+
+// Registrar la regularización sin cambiar
+// los costos históricos de las ventas.
+if (vendidosPosteriores > 0) {
+  await mongoose.connection.db
+    .collection("regularizacionesCompras")
+    .insertOne(
+      {
+        gastoId,
+        productoId: producto._id,
+        sede,
+
+        fechaCompra: fecha,
+        registradoEl: new Date(),
+        registradoPor: req.usuarioCaja._id,
+
+        cantidadCompra: linea.cantidad,
+
+        cantidadVendidaPosterior:
+          vendidosPosteriores,
+
+        existenciaAntesDeRegistrar:
+          existencias,
+
+        existenciaAnteriorALaCompra:
+          redondear(
+            existencias + vendidosPosteriores,
+            3
+          ),
+
+        costoAnterior,
+        costoCompraUSD: costoTotalUSD,
+        costoPromedioNuevo: costoPromedio,
+
+        tratamientoVentas:
+          "Se conservan los costos históricos " +
+          "registrados; no se recalculan " +
+          "utilidades pasadas."
+      },
+      { session }
+    );
+}
 
       const entradaId = new mongoose.Types.ObjectId();
 
