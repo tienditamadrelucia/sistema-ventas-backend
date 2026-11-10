@@ -1,0 +1,275 @@
+import mongoose from "mongoose";
+import Producto from "../models/Producto.js";
+import Entrada from "../models/Entrada.js";
+import Salida from "../models/dbSalidas.js";
+import Vendidos from "../models/dbVendidos.js";
+
+import {
+  comprobarAcceso,
+  fallo
+} from "../utils/controlCaja.js";
+
+import {
+  configuracionHuevos,
+  productoDeHuevos,
+  cargarRegistroHuevos
+} from "../utils/inventarioHuevos.js";
+
+export async function diagnosticoHuevos(req, res) {
+  let session;
+
+  try {
+    if (req.usuarioCaja?.rol !== "ADMINISTRADOR") {
+      throw fallo(
+        403,
+        "Esta consulta corresponde al administrador."
+      );
+    }
+
+    const sede = req.query.sede || "TIENDITA";
+    comprobarAcceso(req, sede);
+
+    let respuesta;
+
+    session = await mongoose.connection.startSession();
+
+    await session.withTransaction(async () => {
+      const config = await configuracionHuevos(session);
+
+      if (!config) {
+        throw fallo(404, "No hay configuración de huevos.");
+      }
+
+      const productoId = productoDeHuevos(config, sede);
+
+      const filtroSede = sede === "MONASTERIO"
+        ? { sede }
+        : {
+            $or: [
+              { sede: "TIENDITA" },
+              { sede: { $exists: false } }
+            ]
+          };
+
+      const producto = await Producto.findOne({
+        _id: productoId,
+        ...filtroSede
+      })
+        .select("codigo descripcion stock medida")
+        .session(session)
+        .lean();
+
+      if (!producto) {
+        throw fallo(
+          409,
+          "El producto configurado no existe en esta sede."
+        );
+      }
+
+      const filtro = {
+        productoId,
+        ...filtroSede
+      };
+
+      const entradas = await Entrada.find(filtro)
+        .select("cantidad fecha movimientoHuevosId")
+        .session(session)
+        .lean();
+
+      const salidas = await Salida.find(filtro)
+        .select("cantidad")
+        .session(session)
+        .lean();
+
+      const ventas = await Vendidos.find(filtro)
+        .select(
+          "factura cantidad asignacionesHuevos huevosUnidades"
+        )
+        .session(session)
+        .lean();
+
+      const registro = await cargarRegistroHuevos(session);
+
+      const sumar = lista =>
+        lista.reduce(
+          (suma, fila) => suma + Number(fila.cantidad),
+          0
+        );
+
+      const inicial = Number(producto.stock || 0);
+      const entradasCartones = sumar(entradas);
+      const salidasCartones = sumar(salidas);
+      const ventasCartones = sumar(ventas);
+
+      const general =
+        inicial +
+        entradasCartones -
+        salidasCartones -
+        ventasCartones;
+
+      const eventos = registro.eventos.filter(
+        evento => evento.sede === sede
+      );
+
+      const saldos = new Map();
+
+      for (const evento of eventos) {
+        if (!evento.grupoId) continue;
+
+        const clave = String(evento.grupoId);
+
+        saldos.set(
+          clave,
+          (saldos.get(clave) || 0) + evento.unidades
+        );
+      }
+
+      const grupos = [...saldos].map(
+        ([grupoId, huevos]) => ({
+          grupoId,
+
+          nombre:
+            registro.grupos.find(
+              grupo => String(grupo._id) === grupoId
+            )?.nombre || "GRUPO NO ENCONTRADO",
+
+          huevos
+        })
+      );
+
+      const huevosGrupos = grupos.reduce(
+        (suma, grupo) => suma + grupo.huevos,
+        0
+      );
+
+      const esperadas = [];
+
+      for (const mov of registro.movimientos) {
+        if (
+          mov.tipo === "PRODUCCION" &&
+          mov.sede === sede &&
+          mov.unidades > 0
+        ) {
+          esperadas.push({
+            movimientoId: mov._id,
+            entradaId: mov.entradaId,
+            huevos: mov.unidades
+          });
+        }
+
+        if (
+          mov.tipo === "ENVIO" &&
+          sede === "TIENDITA" &&
+          mov.recepcion?.recibidos > 0
+        ) {
+          esperadas.push({
+            movimientoId: mov._id,
+            entradaId: mov.recepcion.entradaId,
+            huevos: mov.recepcion.recibidos
+          });
+        }
+      }
+
+      const inconsistenciasEntradas = [];
+
+      for (const esperada of esperadas) {
+        const entrada = entradas.find(
+          fila =>
+            String(fila._id) === String(esperada.entradaId)
+        );
+
+        if (
+          !entrada ||
+          String(entrada.movimientoHuevosId) !==
+            String(esperada.movimientoId) ||
+          Math.abs(
+            Number(entrada.cantidad) * 30 -
+            esperada.huevos
+          ) > 0.00001
+        ) {
+          inconsistenciasEntradas.push({
+            ...esperada,
+            cantidadCartonesRegistrada:
+              entrada?.cantidad ?? null
+          });
+        }
+      }
+
+      const sinAsignacion = ventas.filter(
+        venta => !venta.asignacionesHuevos?.length
+      );
+
+      respuesta = {
+        ok: true,
+        soloLectura: true,
+        sede,
+
+        producto: {
+          id: String(productoId),
+          codigo: producto.codigo,
+          descripcion: producto.descripcion,
+          medida: producto.medida
+        },
+
+        activacion: config.fechaInicioControl,
+
+        resumenCartones: {
+          stockInicial: inicial,
+          entradas: entradasCartones,
+          salidas: salidasCartones,
+          ventas: ventasCartones,
+          existenciaGeneral: general
+        },
+
+        resumenHuevos: {
+          existenciaGeneral: Math.round(general * 30),
+          saldoGrupos: huevosGrupos,
+
+          diferenciaGeneralMenosGrupos:
+            Math.round(general * 30) - huevosGrupos
+        },
+
+        grupos,
+        inconsistenciasEntradas,
+
+        ventasSinAsignacion: {
+          renglones: sinAsignacion.length,
+          cartones: sumar(sinAsignacion)
+        },
+
+        aviso:
+          "Las ventas antiguas sin asignación pueden " +
+          "ser legítimas. Esta consulta no atribuye " +
+          "la causa ni modifica registros."
+      };
+    }, {
+      readConcern: { level: "snapshot" },
+      readPreference: "primary"
+    });
+
+    return res.json(respuesta);
+  } catch (error) {
+    console.error(
+      "Error consultando diagnóstico de huevos:",
+      error
+    );
+
+    const mensaje = error.estado
+      ? error.message
+      : "No se pudo completar el diagnóstico de huevos.";
+
+    return res.status(error.estado || 500).json({
+      ok: false,
+      error: mensaje,
+      mensaje
+    });
+  } finally {
+    if (session) {
+      try {
+        await session.endSession();
+      } catch {
+        // Conservar el resultado.
+      }
+    }
+  }
+}

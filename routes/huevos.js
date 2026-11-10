@@ -20,11 +20,15 @@ import {
   informeHuevos,
   escrituraHuevos
 } from "../controllers/huevos.js";
+import {
+  diagnosticoHuevos
+} from "../controllers/diagnosticoHuevos.js";
 
 const router = express.Router();
 
 // TODAS LAS RUTAS REQUIEREN SESIÓN
 router.use(autenticar);
+router.get("/diagnostico", diagnosticoHuevos);
 
 // CONSULTAS
 router.get(
