@@ -3,7 +3,7 @@ import Producto from "../models/Producto.js";
 import Entrada from "../models/Entrada.js";
 import Salida from "../models/dbSalidas.js";
 import Vendidos from "../models/dbVendidos.js";
-
+import Ventas from "../models/dbVentas.js";
 import {
   comprobarAcceso,
   fallo
@@ -77,9 +77,11 @@ export async function diagnosticoHuevos(req, res) {
         .lean();
 
       const salidas = await Salida.find(filtro)
-        .select("cantidad")
-        .session(session)
-        .lean();
+  .select(
+    "cantidad fecha observacion movimientoHuevosId"
+  )
+  .session(session)
+  .lean();
 
       const ventas = await Vendidos.find(filtro)
         .select(
@@ -199,6 +201,67 @@ export async function diagnosticoHuevos(req, res) {
         venta => !venta.asignacionesHuevos?.length
       );
 
+      const cabeceras = await Ventas.find({
+  factura: {
+    $in: [
+      ...new Set(
+        sinAsignacion.map(venta => venta.factura)
+      )
+    ]
+  },
+  ...filtroSede
+})
+  .select("factura fecha cierre")
+  .session(session)
+  .lean();
+
+const desdeActivacion = new Date(
+  config.fechaInicioControl
+);
+
+const ventasSinGrupoDesdeActivacion = [];
+const ventasSinFechaUnica = [];
+
+for (const venta of sinAsignacion) {
+  const coincidencias = cabeceras.filter(
+    cabecera =>
+      cabecera.factura === venta.factura
+  );
+
+  if (coincidencias.length !== 1) {
+    ventasSinFechaUnica.push({
+      id: venta._id,
+      factura: venta.factura,
+      cantidad: venta.cantidad,
+      coincidencias: coincidencias.length
+    });
+  } else if (
+    new Date(coincidencias[0].fecha) >=
+    desdeActivacion
+  ) {
+    ventasSinGrupoDesdeActivacion.push({
+      id: venta._id,
+      factura: venta.factura,
+      cantidad: venta.cantidad,
+      fecha: coincidencias[0].fecha,
+      cierre:
+        coincidencias[0].cierre || "SIN_CAMPO"
+    });
+  }
+}
+
+ventasSinGrupoDesdeActivacion.sort(
+  (a, b) =>
+    new Date(a.fecha) - new Date(b.fecha)
+);
+
+const salidasManualesDesdeActivacion =
+  salidas.filter(
+    salida =>
+      !salida.movimientoHuevosId &&
+      new Date(salida.fecha) >= desdeActivacion
+  );
+
       respuesta = {
         ok: true,
         soloLectura: true,
@@ -230,6 +293,9 @@ export async function diagnosticoHuevos(req, res) {
         },
 
         grupos,
+        ventasSinGrupoDesdeActivacion,
+        ventasSinFechaUnica,
+        salidasManualesDesdeActivacion,
         inconsistenciasEntradas,
 
         ventasSinAsignacion: {
