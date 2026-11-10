@@ -303,6 +303,40 @@ const salidasManualesDesdeActivacion =
           cartones: sumar(sinAsignacion)
         },
 
+        movimientosDelControl: registro.movimientos
+  .filter(mov =>
+    mov.sede === sede ||
+    (
+      sede === "TIENDITA" &&
+      mov.tipo === "ENVIO" &&
+      mov.recepcion
+    )
+  )
+  .map(mov => ({
+    id: mov._id,
+    grupoId: mov.grupoId,
+    tipo: mov.tipo,
+    sede: mov.sede,
+    fecha: mov.fecha,
+    huevos: mov.unidades,
+
+    recepcion: mov.recepcion
+      ? {
+          fecha: mov.recepcion.fecha,
+          huevosRecibidos: mov.recepcion.recibidos,
+          partidos: mov.recepcion.partidos,
+          faltantes: mov.recepcion.faltantes
+        }
+      : null
+  })),
+
+entradasManualesDesdeActivacion: entradas.filter(
+  entrada =>
+    !entrada.movimientoHuevosId &&
+    new Date(entrada.fecha) >=
+      new Date(config.fechaInicioControl)
+),
+
         aviso:
           "Las ventas antiguas sin asignación pueden " +
           "ser legítimas. Esta consulta no atribuye " +
