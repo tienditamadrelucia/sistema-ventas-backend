@@ -120,7 +120,8 @@ export async function stockGeneralHuevos(
   config,
   sede,
   session,
-  excluirVenta
+  excluirVenta,
+  opciones = {}
 ) {
   const productoId = productoDeHuevos(config, sede);
 
@@ -186,7 +187,10 @@ export async function stockGeneralHuevos(
     !Number.isFinite(cantidad) ||
     !Number.isSafeInteger(unidades) ||
     Math.abs(cantidad * 30 - unidades) > 0.00001 ||
-    unidades < 0
+        (
+      unidades < 0 &&
+      opciones.permitirNegativo !== true
+    )
   ) {
     throw fallo(
       409,

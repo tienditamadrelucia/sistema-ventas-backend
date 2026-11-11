@@ -1,6 +1,10 @@
 import mongoose from "mongoose";
 import { createHash } from "node:crypto";
+import {
+  tocarDias
+} from "../utils/transaccionCaja.js";
 
+import CierreInventario from "../models/CierreInventario.js";
 import {
   GrupoGallinas,
   ConfiguracionHuevos,
@@ -8,7 +12,11 @@ import {
   OperacionHuevos,
   AuditoriaHuevos
 } from "../models/Huevos.js";
-
+import {
+  comprobarAcceso,
+  comprobarAbierta,
+  fallo
+} from "../utils/controlCaja.js";
 import Entrada from "../models/Entrada.js";
 import Salida from "../models/dbSalidas.js";
 import Producto from "../models/Producto.js";
@@ -28,7 +36,8 @@ import {
 } from "../utils/controlCaja.js";
 
 import {
-  comprobarDiaHuevos as abierto
+  comprobarDiaHuevos as abierto,
+  comprobarMesHuevos
 } from "../utils/periodoHuevos.js";
 
 import {
@@ -428,10 +437,17 @@ export async function consultarHuevos(req, res) {
 
       const registro = await cargarRegistroHuevos(session);
 
-      const general = await stockGeneralHuevos(
-        config,
-        sede,
-        session
+      const esAdmin =
+      req.usuarioCaja?.rol === "ADMINISTRADOR";
+
+    const general = await stockGeneralHuevos(
+      config,
+      sede,
+        session,
+        null,
+        {
+        permitirNegativo: esAdmin
+        }
       );
 
       const totalConGrupo = registro.eventos
@@ -441,7 +457,7 @@ export async function consultarHuevos(req, res) {
           0
         );
 
-      if (totalConGrupo > general.unidades) {
+      if (!esAdmin && totalConGrupo > general.unidades)
         throw fallo(
           409,
           "La existencia general y la existencia por grupos " +
@@ -1350,24 +1366,104 @@ export async function eliminarMovimiento(req, session) {
   };
 }
 // REGISTRAR O CORREGIR LA RECEPCIÓN EN TIENDITA
-export async function recibirHuevos(req, session) {
+async function periodoRecepcionAdministrativa(
+  req,
+  d,
+  session,
+  motivo
+) {
+  if (
+    req.usuarioCaja?.rol !== "ADMINISTRADOR"
+  ) {
+    await abierto(d, "TIENDITA", session);
+    return false;
+  }
+
+  await tocarDias(
+    [{ fecha: d, sede: "TIENDITA" }],
+    session
+  );
+
+  const instante = new Date(
+    `${d}T00:00:00.000Z`
+  );
+
+  const cierreAplicado = await CierreInventario
+    .exists({
+      sede: "TIENDITA",
+      fechaInicio: { $lte: instante },
+      fechaFin: { $gt: instante }
+    })
+    .session(session);
+
+  if (cierreAplicado) {
+    throw fallo(
+      423,
+      "Este mes ya tiene un cierre con traslado " +
+      "de stock. La corrección debe incorporarse " +
+      "a la conciliación de ese cierre."
+    );
+  }
+
+  let mesCerrado = false;
+  let diaVerificado = false;
+
+  try {
+    await comprobarMesHuevos(
+      d,
+      "TIENDITA",
+      session
+    );
+  } catch (e) {
+    if (e.estado !== 423) throw e;
+    mesCerrado = true;
+  }
+
+  try {
+    await comprobarAbierta(
+      d,
+      "TIENDITA",
+      session
+    );
+  } catch (e) {
+    if (e.estado !== 423) throw e;
+    diaVerificado = true;
+  }
+
+  if (
+    (mesCerrado || diaVerificado) &&
+    !motivo
+  ) {
+    throw fallo(
+      400,
+      "Como administradora puede regularizar " +
+      "esta recepción. Indique el motivo en " +
+      "Observaciones para conservarlo en la auditoría."
+    );
+  }
+
+  return mesCerrado;
+}
+
+export async function recibirHuevos(
+  req,
+  session
+) {
   comprobarAcceso(req, "TIENDITA");
+
+  const esAdmin =
+    req.usuarioCaja?.rol === "ADMINISTRADOR";
 
   const corrigiendo = req.method === "PUT";
 
-  if (corrigiendo) {
-    administrador(req);
-  }
+  if (corrigiendo) administrador(req);
 
   const mov = await MovimientoHuevos
     .findById(id(req.params.id))
     .session(session);
 
   if (!mov || mov.tipo !== "ENVIO") {
-    throw fallo(
-      404,
-      "Envío no encontrado."
-    );
+    throw fallo(404, "Envío no encontrado.");
   }
 
   if (mov.recepcion && !corrigiendo) {
@@ -1384,16 +1480,18 @@ export async function recibirHuevos(req, session) {
     );
   }
 
-  if (mov.__v !== req.body.versionEsperada) {
+  if (
+    mov.__v !== req.body.versionEsperada
+  ) {
     throw fallo(
       409,
       "El envío cambió. Actualice."
     );
   }
 
-  const fechaRecepcion = fecha(req.body.fecha);
+  const d = fecha(req.body.fecha);
 
-  if (fechaRecepcion < dia(mov.fecha)) {
+  if (d < dia(mov.fecha)) {
     throw fallo(
       400,
       "La recepción no puede ser anterior al envío."
@@ -1423,7 +1521,12 @@ export async function recibirHuevos(req, session) {
   );
 
   const motivo = texto(req.body.motivo);
-  const observaciones = texto(req.body.observaciones);
+  const observaciones = texto(
+    req.body.observaciones
+  );
+
+  const justificacion =
+    observaciones || motivo;
 
   try {
     recepcionHuevos(
@@ -1433,37 +1536,44 @@ export async function recibirHuevos(req, session) {
       faltantes,
       motivo
     );
-  } catch (error) {
-    throw fallo(400, error.message);
+  } catch (e) {
+    throw fallo(400, e.message);
   }
-
-  await abierto(
-    fechaRecepcion,
-    "TIENDITA",
-    session
-  );
 
   const antes = mov.toObject();
   const anterior = antes.recepcion;
 
-  if (anterior) {
-    await abierto(
+  const mesCerrado =
+    await periodoRecepcionAdministrativa(
+      req,
+      d,
+      session,
+      justificacion
+    );
+
+  if (
+    anterior &&
+    dia(anterior.fecha) !== d
+  ) {
+    await periodoRecepcionAdministrativa(
+      req,
       dia(anterior.fecha),
-      "TIENDITA",
-      session
+      session,
+      justificacion
     );
   }
 
-  const config = await configuracionHuevos(session);
+  const config =
+    await configuracionHuevos(session);
 
-  const producto = await Producto
-    .findOne({
-      _id: config.productoTienditaId,
-      $or: [
-        { sede: "TIENDITA" },
-        { sede: { $exists: false } }
-      ]
-    })
+  const producto = await Producto.findOne({
+    _id: config.productoTienditaId,
+
+    $or: [
+      { sede: "TIENDITA" },
+      { sede: { $exists: false } }
+    ]
+  })
     .session(session)
     .lean();
 
@@ -1474,13 +1584,15 @@ export async function recibirHuevos(req, session) {
     );
   }
 
-  const registro = await cargarRegistroHuevos(session);
+  const registro =
+    await cargarRegistroHuevos(session);
 
   const propuesta = {
     ...antes,
+
     recepcion: {
       fecha: new Date(
-        `${fechaRecepcion}T00:00:00.000Z`
+        `${d}T00:00:00.000Z`
       ),
       recibidos,
       partidos,
@@ -1488,93 +1600,202 @@ export async function recibirHuevos(req, session) {
     }
   };
 
-  const candidatos = registro.movimientos.filter(
-    (movimiento) =>
-      String(movimiento._id) !== String(mov._id)
-  );
-
-  candidatos.push(propuesta);
-
   try {
     validarExistencias(
       eventosHuevos(
-        candidatos,
+        [
+          ...registro.movimientos.filter(
+            m =>
+              String(m._id) !==
+              String(mov._id)
+          ),
+          propuesta
+        ],
         registro.vendidos
       )
     );
-  } catch (error) {
-    throw fallo(409, error.message);
+  } catch (e) {
+    throw fallo(409, e.message);
   }
 
   const general = await stockGeneralHuevos(
     config,
     "TIENDITA",
-    session
+    session,
+    null,
+    {
+      permitirNegativo: esAdmin
+    }
   );
 
+  let entradaId =
+    anterior?.entradaId || null;
+
+  let entrada = entradaId
+    ? await Entrada
+        .findById(entradaId)
+        .session(session)
+    : null;
+
   if (
-    general.unidades +
-    recibidos -
-    (anterior?.recibidos || 0) < 0
+    entrada &&
+    (
+      String(entrada.movimientoHuevosId) !==
+        String(mov._id) ||
+      String(entrada.productoId) !==
+        String(producto._id) ||
+      entrada.sede !== "TIENDITA" ||
+      String(entrada.grupoGallinasId) !==
+        String(mov.grupoId)
+    )
   ) {
     throw fallo(
       409,
-      "La corrección deja una existencia general negativa."
+      "La entrada asociada no corresponde a este envío."
+    );
+  }
+
+  const otraEntrada = await Entrada.findOne({
+    movimientoHuevosId: mov._id,
+
+    ...(entradaId
+      ? { _id: { $ne: entradaId } }
+      : {})
+  })
+    .session(session)
+    .lean();
+
+  if (otraEntrada) {
+    throw fallo(
+      409,
+      "Ya existe otra entrada vinculada al envío. " +
+      "Revísela antes de continuar."
+    );
+  }
+
+  const restaurando = Boolean(
+    entradaId && !entrada
+  );
+
+  if (restaurando && !esAdmin) {
+    throw fallo(
+      409,
+      "Falta la entrada del envío. " +
+      "Debe restaurarla la administradora."
+    );
+  }
+
+  const entradaAntes = entrada
+    ? entrada.toObject()
+    : null;
+
+  const cantidadAnterior = entrada
+    ? Number(entrada.cantidad) * 30
+    : 0;
+
+  if (
+    !Number.isFinite(cantidadAnterior) ||
+    Math.abs(
+      cantidadAnterior -
+      Math.round(cantidadAnterior)
+    ) > 0.00001
+  ) {
+    throw fallo(
+      409,
+      "La cantidad de la entrada anterior " +
+      "no representa huevos enteros."
+    );
+  }
+
+  const saldoPosterior =
+    general.unidades +
+    recibidos -
+    Math.round(cantidadAnterior);
+
+  if (
+    !esAdmin &&
+    saldoPosterior < 0
+  ) {
+    throw fallo(
+      409,
+      "La recepción deja una existencia " +
+      "general negativa. Debe revisarla " +
+      "la administradora."
+    );
+  }
+
+  if (
+    esAdmin &&
+    (
+      general.unidades < 0 ||
+      saldoPosterior < 0 ||
+      restaurando
+    ) &&
+    !justificacion
+  ) {
+    throw fallo(
+      400,
+      "Indique en Observaciones el motivo " +
+      "de la regularización administrativa."
     );
   }
 
   const campos = {
     fecha: new Date(
-      `${fechaRecepcion}T00:00:00.000Z`
+      `${d}T00:00:00.000Z`
     ),
+
     productoId: producto._id,
     codigo: producto.codigo,
     categoria: producto.categoria,
     cantidad: recibidos / 30,
+
     observacion:
       "RECEPCIÓN DE HUEVOS DEL MONASTERIO",
+
     sede: "TIENDITA",
-    cierre: "N",
+    cierre: mesCerrado ? "S" : "N",
+
     grupoGallinasId: mov.grupoId,
     movimientoHuevosId: mov._id,
     huevosUnidades: recibidos
   };
 
-  let entradaId = anterior?.entradaId || null;
-
-  if (entradaId) {
-    const entrada = await Entrada
-      .findOne({
-        _id: entradaId,
-        movimientoHuevosId: mov._id,
-        cierre: { $ne: "S" }
-      })
-      .session(session);
-
-    if (!entrada) {
+  if (entrada) {
+    if (
+      entrada.cierre === "S" &&
+      !esAdmin
+    ) {
       throw fallo(
-        409,
-        "La entrada asociada cambió o está cerrada."
+        423,
+        "La entrada está cerrada."
       );
     }
 
-    if (recibidos > 0) {
+    if (recibidos) {
       entrada.set(campos);
-
       await entrada.save({ session });
     } else {
-      await Entrada
-        .deleteOne({ _id: entrada._id })
-        .session(session);
+      await Entrada.deleteOne(
+        { _id: entrada._id },
+        { session }
+      );
 
       entradaId = null;
     }
-  } else if (recibidos > 0) {
-    const entrada = new Entrada(campos);
+  } else if (recibidos) {
+    entrada = new Entrada({
+      ...(entradaId
+        ? { _id: entradaId }
+        : {}),
+
+      ...campos
+    });
 
     await entrada.save({ session });
-
     entradaId = entrada._id;
+  } else {
+    entradaId = null;
   }
 
   mov.recepcion = {
@@ -1589,25 +1810,45 @@ export async function recibirHuevos(req, session) {
   };
 
   mov.increment();
-
   await mov.save({ session });
 
   await auditar(
     req,
-    corrigiendo
-      ? "CORREGIR_RECEPCION"
+
+    esAdmin
+      ? "RECEPCION_ADMINISTRATIVA"
       : "RECIBIR_ENVIO",
+
     mov._id,
-    antes,
-    mov.toObject(),
+
+    {
+      movimiento: antes,
+      entrada: entradaAntes,
+      existenciaGeneralHuevos:
+        general.unidades
+    },
+
+    {
+      movimiento: mov.toObject(),
+      existenciaGeneralHuevos:
+        saldoPosterior,
+      entradaRestaurada: restaurando
+    },
+
     session
   );
 
   return {
     ok: true,
-    mensaje: corrigiendo
-      ? "Recepción corregida y existencia recalculada."
-      : "Recepción confirmada. Solo los huevos aptos ingresaron a Tiendita."
+
+    mensaje:
+      "Recepción guardada y entrada vinculada." +
+      (
+        saldoPosterior < 0
+          ? " El inventario todavía tiene un saldo " +
+            "negativo pendiente de conciliación."
+          : ""
+      )
   };
 }
 
