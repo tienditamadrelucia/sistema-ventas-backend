@@ -457,7 +457,10 @@ export async function consultarHuevos(req, res) {
           0
         );
 
-      if (!esAdmin && totalConGrupo > general.unidades)
+            if (
+        !esAdmin &&
+        totalConGrupo > general.unidades
+      ) {
         throw fallo(
           409,
           "La existencia general y la existencia por grupos " +
