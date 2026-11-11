@@ -31,11 +31,6 @@ import {
 } from "../utils/cobrosHuevos.mjs";
 
 import {
-  comprobarAcceso,
-  fallo
-} from "../utils/controlCaja.js";
-
-import {
   comprobarDiaHuevos as abierto,
   comprobarMesHuevos
 } from "../utils/periodoHuevos.js";
