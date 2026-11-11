@@ -10,7 +10,9 @@ import Caja from "../models/dbCaja.js";
 import Inventario from "../models/dbInventario.js";
 import Ingresos from "../models/dbIngresos.js";
 import CierreInventario from "../models/CierreInventario.js";
-
+import {
+  aperturaDesdeInventario
+} from "../utils/aperturaDesdeInventario.js";
 import {
   fallo,
   comprobarAcceso
@@ -139,10 +141,13 @@ function resumenCierre(
     }
 
     if (
-      typeof fila.cantidad !== "number" ||
-      !Number.isFinite(fila.cantidad) ||
-      fila.cantidad < 0
-    ) {
+      !fila.baseConfirmada &&
+        typeof fila.stockInicialReferencia ===
+        "number" &&
+        Number.isFinite(
+        fila.stockInicialReferencia
+        )
+      ) {
       incidencias.push({
         motivo:
           "Cantidad inválida en un movimiento.",
@@ -403,6 +408,38 @@ export async function vistaPreviaCierreInventario(
           .session(session)
           .lean();
 
+          const inventariosApertura = anterior
+  ? []
+  : await Inventario.find({
+      ...filtroSede,
+
+      fecha: {
+        $gte: inicio,
+
+        $lt: new Date(
+          inicio.getTime() + 86400000
+        )
+      }
+    })
+      .select(
+        "productoId stockFisico stockReal fecha"
+      )
+      .session(session)
+      .lean();
+
+  const apertura = anterior
+    ? null
+    : aperturaDesdeInventario(
+        productos,
+        inventariosApertura
+      );
+
+  const baseParaCalculo = anterior || {
+    detalles: apertura.bases.map(base => ({
+      productoId: base.productoId,
+      stockFinal: base.stockInicial
+    }))
+    };
         const entradas = await Entrada
           .find(filtroPeriodo)
           .select(
@@ -495,24 +532,32 @@ export async function vistaPreviaCierreInventario(
         const {
           detalles,
           incidencias
-        } = resumenCierre(
-          productos,
-          entradas,
-          salidas,
-          vendidos,
-          anterior,
-          inicio,
-          fin
-        );
+            } = resumenCierre(
+            productos,
+            entradas,
+            salidas,
+            vendidos,
+            baseParaCalculo,
+            inicio,
+            fin
+          );
+
+        if (apertura) {
+          incidencias.push(
+          ...apertura.incidencias
+          );
+        }
 
         const observaciones = [];
 
-        if (!anterior) {
-          observaciones.push(
-            "Falta un cierre anterior que respalde " +
-            "la apertura. El stock actual del producto " +
-            "tiene fecha de origen no confirmada."
-          );
+        if (
+          !anterior &&
+          !apertura.bases.length
+        ) {
+        observaciones.push(
+          "No se encontró una apertura válida " +
+          "en el inventario físico del primer día del mes."
+        );
         }
 
         if (
@@ -571,6 +616,10 @@ export async function vistaPreviaCierreInventario(
         respuesta = {
           ok: true,
           soloLectura: true,
+          origenBase: anterior
+            ? "CIERRE_ANTERIOR"
+            : "INVENTARIO_FISICO",
+          aperturaInventario: apertura,
           estado: "VISTA_PREVIA",
           sede,
           anio,
