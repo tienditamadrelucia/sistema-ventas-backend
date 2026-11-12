@@ -40,7 +40,8 @@ export function calcularSaldoConsumoLote({
   entradas = [],
   salidas = [],
   vendidos = [],
-  ventas = []
+  ventas = [],
+  saldosGenerales = null
 }) {
   const facturaMap = new Map();
 
@@ -66,9 +67,23 @@ export function calcularSaldoConsumoLote({
     (item) => sedeDe(item) === sede
   );
 
-  const vendidosSede = vendidos.filter(
-    (item) => sedeDe(item) === sede
+  const vendidosSede = vendidos.filter(item => {
+  if (
+    sedeDe(item) !== sede ||
+    item.descuentaInventario === false
+  ) {
+    return false;
+  }
+
+  const cabeceras = facturaMap.get(
+    String(item.factura)
+  ) || [];
+
+  return !(
+    cabeceras.length === 1 &&
+    cabeceras[0].estado === "CREDITO"
   );
+});
 
   const grupos = new Map();
 
@@ -243,28 +258,35 @@ export function calcularSaldoConsumoLote({
       }
     }
 
-    let general = gramos(
-      producto?.stock ?? 0,
-      true
-    );
+    let general;
 
-    for (
-      const entrada of entradasSede.filter(esProducto)
-    ) {
-      general += cantidadGramos(entrada.cantidad);
-    }
+if (saldosGenerales) {
+  const saldo = saldosGenerales.get(productoId);
 
-    for (
-      const salida of salidasSede.filter(esProducto)
-    ) {
-      general -= cantidadGramos(salida.cantidad);
-    }
+  general = saldo?.stockReal == null
+    ? NaN
+    : gramos(saldo.stockReal, true);
+} else {
+  general = gramos(producto?.stock ?? 0, true);
 
-    for (
-      const vendido of vendidosSede.filter(esProducto)
-    ) {
-      general -= cantidadGramos(vendido.cantidad);
-    }
+  for (
+    const entrada of entradasSede.filter(esProducto)
+  ) {
+    general += cantidadGramos(entrada.cantidad);
+  }
+
+  for (
+    const salida of salidasSede.filter(esProducto)
+  ) {
+    general -= cantidadGramos(salida.cantidad);
+  }
+
+  for (
+    const vendido of vendidosSede.filter(esProducto)
+  ) {
+    general -= cantidadGramos(vendido.cantidad);
+  }
+}
 
     if (
       ![saldoGramos, general, saldoPiezas]

@@ -17,6 +17,9 @@ import { tocarDias } from "../utils/transaccionCaja.js";
 import {
   calcularSaldoConsumoLote
 } from "../utils/saldoConsumoLote.js";
+import {
+  saldoInventario
+} from "../utils/saldoInventario.js";
 
 const DESTINOS = [
   {
@@ -160,20 +163,36 @@ async function cargarSaldo(loteId, sede, dia, session) {
         ...filtroSede(sede),
         factura: { $in: facturas }
       })
-        .select("factura fecha sede")
+        .select("factura fecha sede estado")
         .session(session)
         .lean()
     : [];
 
-  return calcularSaldoConsumoLote({
-    loteId,
+  const saldosGenerales = new Map();
+
+for (const producto of productos) {
+  const saldo = await saldoInventario(
+    producto,
     sede,
-    productos,
-    entradas,
-    salidas,
-    vendidos,
-    ventas
-  });
+    session
+  );
+
+  saldosGenerales.set(
+    String(producto._id),
+    saldo
+  );
+}
+
+return calcularSaldoConsumoLote({
+  loteId,
+  sede,
+  productos,
+  entradas,
+  salidas,
+  vendidos,
+  ventas,
+  saldosGenerales
+});
 }
 
 // =====================================================
