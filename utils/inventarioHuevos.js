@@ -10,7 +10,7 @@ import Entrada from "../models/Entrada.js";
 import Salida from "../models/dbSalidas.js";
 import Vendidos from "../models/dbVendidos.js";
 import Producto from "../models/Producto.js";
-
+import { saldoInventario } from "./saldoInventario.js";
 import {
   fallo,
   protegerEscrituras,
@@ -123,23 +123,26 @@ export async function stockGeneralHuevos(
   excluirVenta,
   opciones = {}
 ) {
-  const productoId = productoDeHuevos(config, sede);
+  const productoId = productoDeHuevos(
+    config,
+    sede
+  );
 
-  const filtroSede = sede === "MONASTERIO"
-    ? { sede }
-    : {
-        $or: [
-          { sede },
-          { sede: { $exists: false } }
-        ]
-      };
+  const filtroSede =
+    sede === "MONASTERIO"
+      ? { sede }
+      : {
+          $or: [
+            { sede: "TIENDITA" },
+            { sede: { $exists: false } }
+          ]
+        };
 
-  const producto = await Producto
-    .findOne({
-      _id: productoId,
-      ...filtroSede
-    })
-    .session(session)
+  const producto = await Producto.findOne({
+    _id: productoId,
+    ...filtroSede
+  })
+    .session(session || null)
     .lean();
 
   if (!producto) {
@@ -149,59 +152,47 @@ export async function stockGeneralHuevos(
     );
   }
 
-  const entradas = await Entrada
-    .find({ productoId, ...filtroSede })
-    .session(session)
-    .lean();
+  const saldo = await saldoInventario(
+    producto,
+    sede,
+    session,
+    {
+      excluirFactura:
+        excluirVenta?.sede === sede
+          ? excluirVenta.factura
+          : undefined
+    }
+  );
 
-  const salidas = await Salida
-    .find({ productoId, ...filtroSede })
-    .session(session)
-    .lean();
-
-  const filtroVendido = {
-    productoId,
-    ...filtroSede
-  };
-
-  if (excluirVenta?.sede === sede) {
-    filtroVendido.factura = {
-      $ne: excluirVenta.factura
-    };
+  if (saldo.stockReal === null) {
+    throw fallo(
+      409,
+      "El inventario de huevos tiene facturas sin fecha única y requiere revisión."
+    );
   }
 
-  const vendidos = await Vendidos
-    .find(filtroVendido)
-    .session(session)
-    .lean();
-
-  const cantidad =
-    Number(producto.stock || 0) +
-    entradas.reduce((suma, entrada) => suma + entrada.cantidad, 0) -
-    salidas.reduce((suma, salida) => suma + salida.cantidad, 0) -
-    vendidos.reduce((suma, vendido) => suma + vendido.cantidad, 0);
-
+  const cantidad = saldo.stockReal;
   const unidades = Math.round(cantidad * 30);
 
   if (
     !Number.isFinite(cantidad) ||
     !Number.isSafeInteger(unidades) ||
     Math.abs(cantidad * 30 - unidades) > 0.00001 ||
-        (
+    (
       unidades < 0 &&
       opciones.permitirNegativo !== true
     )
   ) {
     throw fallo(
       409,
-      "La existencia anterior de huevos necesita revisión: " +
-      "debe representar huevos enteros y no ser negativa."
+      "La existencia anterior de huevos necesita revisión: debe representar huevos enteros y no ser negativa."
     );
   }
 
   return {
     producto,
-    unidades
+    unidades,
+    fechaBase: saldo.fechaBase
   };
 }
 

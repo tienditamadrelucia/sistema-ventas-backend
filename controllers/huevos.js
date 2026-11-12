@@ -414,13 +414,17 @@ export async function consultarHuevos(req, res) {
     let respuesta;
 
     await session.withTransaction(async () => {
-      const config = await configuracionHuevos(session);
+      const config = await configuracionHuevos(
+        session
+      );
 
       if (!config) {
         respuesta = {
           ok: true,
+
           esAdministrador:
             req.usuarioCaja.rol === "ADMINISTRADOR",
+
           configuracion: null,
           grupos: [],
           movimientos: [],
@@ -430,48 +434,48 @@ export async function consultarHuevos(req, res) {
         return;
       }
 
-      const registro = await cargarRegistroHuevos(session);
+      const registro = await cargarRegistroHuevos(
+        session
+      );
 
-      const esAdmin =
-      req.usuarioCaja?.rol === "ADMINISTRADOR";
-
-    const general = await stockGeneralHuevos(
-      config,
-      sede,
+      // La consulta puede mostrar saldos negativos
+      // para que puedan revisarse.
+      const general = await stockGeneralHuevos(
+        config,
+        sede,
         session,
         null,
         {
-        permitirNegativo: esAdmin
+          permitirNegativo: true
         }
       );
 
       const totalConGrupo = registro.eventos
-        .filter((evento) => evento.sede === sede)
+        .filter(evento => evento.sede === sede)
         .reduce(
           (suma, evento) => suma + evento.unidades,
           0
         );
 
-            if (
-        !esAdmin &&
-        totalConGrupo > general.unidades
-      ) {
-        throw fallo(
-          409,
-          "La existencia general y la existencia por grupos " +
-          "no coinciden. El administrador debe revisar " +
-          "los movimientos antes de continuar."
-        );
-      }
+      const advertenciaInventario =
+        totalConGrupo > general.unidades ||
+        general.unidades < 0
+          ? "El inventario o el seguimiento histórico " +
+            "por grupos requiere conciliación. " +
+            "Comuníquelo a la administradora."
+          : "";
 
       respuesta = {
         ok: true,
+
         esAdministrador:
           req.usuarioCaja.rol === "ADMINISTRADOR",
+
         configuracion: config,
         sede,
         fecha: fechaConsulta,
         conceptos: CONCEPTOS_HUEVOS,
+        advertenciaInventario,
 
         producto: {
           _id: general.producto._id,
@@ -480,10 +484,11 @@ export async function consultarHuevos(req, res) {
         },
 
         existenciaTotalHuevos: general.unidades,
+
         existenciaSinGrupo:
           general.unidades - totalConGrupo,
 
-        grupos: registro.grupos.map((grupo) => ({
+        grupos: registro.grupos.map(grupo => ({
           ...grupo,
 
           gallinasActuales: gallinasDisponibles(
@@ -500,16 +505,14 @@ export async function consultarHuevos(req, res) {
         })),
 
         movimientos: registro.movimientos
-          .filter(
-            (movimiento) =>
-              sede === "MONASTERIO" ||
-              movimiento.sede === "TIENDITA" ||
-              movimiento.tipo === "ENVIO"
+          .filter(movimiento =>
+            sede === "MONASTERIO" ||
+            movimiento.sede === "TIENDITA" ||
+            movimiento.tipo === "ENVIO"
           )
-          .sort(
-            (a, b) =>
-              new Date(b.fecha) - new Date(a.fecha) ||
-              String(b._id).localeCompare(String(a._id))
+          .sort((a, b) =>
+            new Date(b.fecha) - new Date(a.fecha) ||
+            String(b._id).localeCompare(String(a._id))
           )
       };
     });
@@ -1385,6 +1388,33 @@ async function periodoRecepcionAdministrativa(
   const instante = new Date(
     `${d}T00:00:00.000Z`
   );
+  const aperturaAplicada = await mongoose.connection.db
+  .collection("aperturasStockInventario")
+  .findOne(
+    {
+      sede: "TIENDITA",
+
+      fechaOrigen: {
+        $lte: instante
+      },
+
+      fechaBase: {
+        $gt: instante
+      }
+    },
+    {
+      session
+    }
+  );
+
+if (aperturaAplicada) {
+  throw fallo(
+    423,
+    "Ese período ya fue trasladado a la apertura " +
+    "siguiente. La corrección debe incorporarse " +
+    "a una conciliación de la apertura."
+  );
+}
 
   const cierreAplicado = await CierreInventario
     .exists({

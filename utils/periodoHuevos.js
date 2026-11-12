@@ -1,3 +1,5 @@
+import mongoose from "mongoose";
+
 import Entrada from "../models/Entrada.js";
 import Salida from "../models/dbSalidas.js";
 import Gastos from "../models/dbGastos.js";
@@ -13,48 +15,80 @@ import {
   tocarDias
 } from "./transaccionCaja.js";
 
-// COMPROBAR SI EL MES TIENE DOCUMENTOS CERRADOS
 export async function comprobarMesHuevos(
-  fecha,
+  d,
   sede,
   session
 ) {
+  const instanteStock = new Date(
+    `${d}T00:00:00.000Z`
+  );
+
+  const aperturaStock = await mongoose.connection.db
+    .collection("aperturasStockInventario")
+    .findOne(
+      {
+        sede,
+
+        fechaOrigen: {
+          $lte: instanteStock
+        },
+
+        fechaBase: {
+          $gt: instanteStock
+        }
+      },
+      {
+        session: session || undefined
+      }
+    );
+
+  if (aperturaStock) {
+    throw fallo(
+      423,
+      "Ese período ya fue trasladado a la " +
+      "apertura siguiente. La corrección " +
+      "requiere conciliar la apertura."
+    );
+  }
+
   const inicio = new Date(
-    `${fecha.slice(0, 7)}-01T00:00:00.000Z`
+    `${d.slice(0, 7)}-01T00:00:00.000Z`
   );
 
   const fin = new Date(inicio);
   fin.setUTCMonth(fin.getUTCMonth() + 1);
-
-  const filtroSede = sede === "MONASTERIO"
-    ? { sede: "MONASTERIO" }
-    : {
-        $or: [
-          { sede: "TIENDITA" },
-          { sede: { $exists: false } }
-        ]
-      };
 
   const filtro = {
     fecha: {
       $gte: inicio,
       $lt: fin
     },
+
     cierre: "S",
-    ...filtroSede
+
+    ...(
+      sede === "MONASTERIO"
+        ? { sede }
+        : {
+            $or: [
+              { sede },
+              { sede: { $exists: false } }
+            ]
+          }
+    )
   };
 
-  const modelos = [
-    Entrada,
-    Salida,
-    Gastos,
-    Ventas,
-    Caja
-  ];
-
-  for (const Modelo of modelos) {
-    const cerrado = await Modelo
-      .findOne(filtro)
+  for (
+    const Modelo of [
+      Entrada,
+      Salida,
+      Gastos,
+      Ventas,
+      Caja
+    ]
+  ) {
+    const cerrado = await Modelo.findOne(filtro)
       .select("_id")
       .session(session)
       .lean();
@@ -69,25 +103,29 @@ export async function comprobarMesHuevos(
   }
 }
 
-// COMPROBAR EL DÍA Y EL MES ANTES DE GUARDAR
 export async function comprobarDiaHuevos(
-  fecha,
+  d,
   sede,
   session
 ) {
   await tocarDias(
-    [{ fecha, sede }],
+    [
+      {
+        fecha: d,
+        sede
+      }
+    ],
     session
   );
 
   await comprobarAbierta(
-    fecha,
+    d,
     sede,
     session
   );
 
   await comprobarMesHuevos(
-    fecha,
+    d,
     sede,
     session
   );

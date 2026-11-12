@@ -1,6 +1,8 @@
 import mongoose from "mongoose";
 import { createHash } from "node:crypto";
-
+import {
+  saldoInventario
+} from "../utils/saldoInventario.js";
 import Gastos from "../models/dbGastos.js";
 import Entrada from "../models/Entrada.js";
 import Producto from "../models/Producto.js";
@@ -48,11 +50,14 @@ function numeroPositivo(valor, nombre) {
 async function sumarCantidades(Modelo, productoId, sede, session) {
   const filas = await Modelo.aggregate([
     {
-      $match: {
-        productoId,
-        ...porSede(sede)
-      }
+  $match: {
+    productoId,
+    descuentaInventario: {
+      $ne: false
     },
+    ...porSede(sede)
+  }
+},
     {
       $group: {
         _id: null,
@@ -597,31 +602,24 @@ const solicitud = {
           rol
         );
 
-      const entradas = await sumarCantidades(
-        Entrada,
-        producto._id,
-        sede,
-        session
-      );
+      const saldoCompra = await saldoInventario(
+  producto,
+  sede,
+  session
+);
 
-      const salidas = await sumarCantidades(
-        Salidas,
-        producto._id,
-        sede,
-        session
-      );
+if (saldoCompra.stockReal === null) {
+  throw fallo(
+    409,
+    "El inventario tiene facturas sin fecha única. " +
+    "Revise el costo antes de registrar la compra."
+  );
+}
 
-      const vendidos = await sumarCantidades(
-        Vendidos,
-        producto._id,
-        sede,
-        session
-      );
-
-      const existencias = redondear(
-        Number(producto.stock || 0) + entradas - salidas - vendidos,
-        3
-      );
+const existencias = redondear(
+  saldoCompra.stockReal,
+  3
+);
 
       const costoAnterior = Number(producto.costo);   
 

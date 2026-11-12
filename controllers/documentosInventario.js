@@ -3,7 +3,9 @@ import DocumentoInventario from "../models/DocumentoInventario.js";
 import Entrada from "../models/Entrada.js";
 import Salida from "../models/dbSalidas.js";
 import Producto from "../models/Producto.js";
-
+import {
+  saldoInventario
+} from "../utils/saldoInventario.js";
 import {
   fallo,
   comprobarAcceso
@@ -412,50 +414,20 @@ async function existenciaDocumento(
   sede,
   session
 ) {
-  const filtro = {
-    productoId: producto._id,
-    ...filtroSedeDocumento(sede)
-  };
+  const saldo = await saldoInventario(
+    producto,
+    sede,
+    session
+  );
 
-  const entradas = await Entrada
-    .find(filtro)
-    .select("cantidad")
-    .session(session)
-    .lean();
-
-  const salidas = await Salida
-    .find(filtro)
-    .select("cantidad")
-    .session(session)
-    .lean();
-
-  const ventas = await Vendidos
-    .find(filtro)
-    .select("cantidad")
-    .session(session)
-    .lean();
-
-  const sumar = lista =>
-    lista.reduce(
-      (suma, fila) =>
-        suma + Number(fila.cantidad),
-      0
-    );
-
-  const saldo =
-    Number(producto.stock || 0) +
-    sumar(entradas) -
-    sumar(salidas) -
-    sumar(ventas);
-
-  if (!Number.isFinite(saldo)) {
+  if (saldo.stockReal === null) {
     throw fallo(
       409,
-      `Revise las existencias del producto ${producto.codigo}.`
+      "El inventario contiene facturas pendientes de revisión."
     );
   }
 
-  return saldo;
+  return saldo.stockReal;
 }
 
 // ==========================================

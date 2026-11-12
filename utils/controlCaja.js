@@ -234,6 +234,13 @@ export function protegerEscrituras(
           alcances,
           session
         );
+        for (const alcance of alcances) {
+          await comprobarPeriodoTrasladado(
+          alcance.fecha,
+          alcance.sede || "TIENDITA",
+            session
+          );
+        }
 
         if (!permitirVerificada) {
           for (const alcance of alcances) {
@@ -344,4 +351,43 @@ export function protegerEscrituras(
         .json(respuesta.datos);
     });
   };
+}
+
+export async function comprobarPeriodoTrasladado(
+  fecha,
+  sede,
+  session
+) {
+  const instante = new Date(
+    `${diaComercial(fecha)}T00:00:00.000Z`
+  );
+
+  const aplicado = await mongoose.connection.db
+    .collection("aperturasStockInventario")
+    .findOne(
+      {
+        sede,
+
+        fechaOrigen: {
+          $lte: instante
+        },
+
+        fechaBase: {
+          $gt: instante
+        }
+      },
+      {
+        session
+      }
+    );
+
+  if (aplicado) {
+    throw fallo(
+      423,
+      "Ese período ya fue trasladado a la apertura " +
+      "siguiente. Su corrección requiere conciliar " +
+      "la apertura; puede continuar con las ventas " +
+      "de noviembre."
+    );
+  }
 }

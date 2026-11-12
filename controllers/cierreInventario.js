@@ -1,5 +1,4 @@
 import mongoose from "mongoose";
-
 import Producto from "../models/Producto.js";
 import Entrada from "../models/Entrada.js";
 import Salida from "../models/dbSalidas.js";
@@ -10,9 +9,11 @@ import Caja from "../models/dbCaja.js";
 import Inventario from "../models/dbInventario.js";
 import Ingresos from "../models/dbIngresos.js";
 import CierreInventario from "../models/CierreInventario.js";
+
 import {
   aperturaDesdeInventario
 } from "../utils/aperturaDesdeInventario.js";
+
 import {
   fallo,
   comprobarAcceso
@@ -49,14 +50,8 @@ function periodoCierre(anio, mes) {
   return {
     anio: a,
     mes: m,
-
-    inicio: new Date(
-      Date.UTC(a, m - 1, 1)
-    ),
-
-    fin: new Date(
-      Date.UTC(a, m, 1)
-    )
+    inicio: new Date(Date.UTC(a, m - 1, 1)),
+    fin: new Date(Date.UTC(a, m, 1))
   };
 }
 
@@ -82,27 +77,19 @@ function resumenCierre(
     productos.map(producto => {
       const id = String(producto._id);
       const tieneBase = bases.has(id);
-      const base = tieneBase
-        ? bases.get(id)
-        : null;
+      const base = tieneBase ? bases.get(id) : null;
 
       return [
         id,
         {
           productoId: id,
           codigo: producto.codigo,
-
           descripcion:
-            producto.descripcion ||
-            "SIN DESCRIPCIÓN",
-
+            producto.descripcion || "SIN DESCRIPCIÓN",
           unidad: producto.medida || "",
-
           stockInicial: base,
-
-          // Sólo referencia; su fecha puede desconocerse.
-          stockInicialReferencia:
-            producto.stock ?? null,
+          stockInicialReferencia: producto.stock ?? null,
+          versionProductoAntes: producto.__v ?? 0,
 
           baseConfirmada:
             tieneBase &&
@@ -114,7 +101,6 @@ function resumenCierre(
           salidas: 0,
           ventasContado: 0,
           ventasCredito: 0,
-
           stockFinal: null,
           stockFinalSimulado: null
         }
@@ -130,9 +116,7 @@ function resumenCierre(
     if (!producto) {
       incidencias.push({
         motivo:
-          "Movimiento de un producto que ya " +
-          "no existe en esta sede.",
-
+          "Movimiento de un producto que ya no existe en esta sede.",
         id: String(fila._id),
         productoId: String(fila.productoId)
       });
@@ -141,17 +125,12 @@ function resumenCierre(
     }
 
     if (
-      !fila.baseConfirmada &&
-        typeof fila.stockInicialReferencia ===
-        "number" &&
-        Number.isFinite(
-        fila.stockInicialReferencia
-        )
-      ) {
+      typeof fila.cantidad !== "number" ||
+      !Number.isFinite(fila.cantidad) ||
+      fila.cantidad < 0
+    ) {
       incidencias.push({
-        motivo:
-          "Cantidad inválida en un movimiento.",
-
+        motivo: "Cantidad inválida en un movimiento.",
         id: String(fila._id),
         codigo: producto.codigo
       });
@@ -164,31 +143,20 @@ function resumenCierre(
     if (!Number.isFinite(producto[campo])) {
       incidencias.push({
         motivo:
-          "La suma de cantidades supera " +
-          "el rango permitido.",
-
+          "La suma de cantidades supera el rango permitido.",
         codigo: producto.codigo
       });
     }
   }
 
-  entradas.forEach(fila =>
-    sumar(fila, "entradas")
-  );
+  entradas.forEach(fila => sumar(fila, "entradas"));
+  salidas.forEach(fila => sumar(fila, "salidas"));
 
-  salidas.forEach(fila =>
-    sumar(fila, "salidas")
-  );
-
-  // La fecha y el estado se toman de la factura.
-  // Los abonos no descuentan productos otra vez.
   for (const fila of vendidos) {
     if (fila.cabeceras.length !== 1) {
       incidencias.push({
         motivo:
-          "Detalle vendido sin una factura " +
-          "única en la sede.",
-
+          "Detalle vendido sin una factura única en la sede.",
         id: String(fila._id),
         factura: fila.factura
       });
@@ -211,7 +179,12 @@ function resumenCierre(
       continue;
     }
 
-    if (fecha < inicio || fecha >= fin) {
+    if (fecha < inicio || fecha >= fin) continue;
+
+    if (
+      fila.descuentaInventario === false &&
+      venta.estado !== "CREDITO"
+    ) {
       continue;
     }
 
@@ -221,9 +194,7 @@ function resumenCierre(
     ) {
       incidencias.push({
         motivo:
-          "Un ingreso que no es venta tiene " +
-          "productos vendidos asociados.",
-
+          "Un ingreso que no es venta tiene productos vendidos asociados.",
         factura: fila.factura
       });
 
@@ -231,15 +202,11 @@ function resumenCierre(
     }
 
     if (
-      !["CONTADO", "CREDITO"].includes(
-        venta.estado
-      )
+      !["CONTADO", "CREDITO"].includes(venta.estado)
     ) {
       incidencias.push({
         motivo:
-          "Factura sin estado CONTADO " +
-          "o CREDITO válido.",
-
+          "Factura sin estado CONTADO o CREDITO válido.",
         factura: fila.factura
       });
 
@@ -256,11 +223,12 @@ function resumenCierre(
 
   const detalles = [...mapa.values()]
     .map(fila => {
+      // Los créditos siguen en elaboración.
+      // Sólo se descuentan las ventas de contado.
       const variacion =
         fila.entradas -
         fila.salidas -
-        fila.ventasContado -
-        fila.ventasCredito;
+        fila.ventasContado;
 
       if (fila.baseConfirmada) {
         fila.stockFinal =
@@ -270,7 +238,6 @@ function resumenCierre(
           incidencias.push({
             motivo:
               "La existencia final sería negativa.",
-
             codigo: fila.codigo,
             stockFinal: fila.stockFinal
           });
@@ -279,17 +246,13 @@ function resumenCierre(
         }
       }
 
-      // Una simulación no confirma la apertura.
       if (
-        typeof fila.stockInicialReferencia ===
-          "number" &&
-        Number.isFinite(
-          fila.stockInicialReferencia
-        )
+        !fila.baseConfirmada &&
+        typeof fila.stockInicialReferencia === "number" &&
+        Number.isFinite(fila.stockInicialReferencia)
       ) {
         fila.stockFinalSimulado =
-          fila.stockInicialReferencia +
-          variacion;
+          fila.stockInicialReferencia + variacion;
       }
 
       return fila;
@@ -310,122 +273,93 @@ function resumenCierre(
     incidencias
   };
 }
-// ==========================================
-// CONSULTAR VISTA PREVIA DEL CIERRE
-// ==========================================
-export async function vistaPreviaCierreInventario(
+
+export async function leerVistaPreviaCierreInventario(
   req,
-  res
+  session
 ) {
-  let session;
+  if (req.usuarioCaja?.rol !== "ADMINISTRADOR") {
+    throw fallo(
+      403,
+      "Esta consulta corresponde al administrador."
+    );
+  }
 
-  try {
-    if (
-      req.usuarioCaja?.rol !== "ADMINISTRADOR"
-    ) {
-      throw fallo(
-        403,
-        "La vista previa del cierre corresponde al administrador."
-      );
+  const sede = req.query.sede;
+  comprobarAcceso(req, sede);
+
+  const {
+    anio,
+    mes,
+    inicio,
+    fin
+  } = periodoCierre(
+    req.query.anio,
+    req.query.mes
+  );
+
+  const filtroSede = filtroSedeCierre(sede);
+
+  const filtroPeriodo = {
+    ...filtroSede,
+    fecha: {
+      $gte: inicio,
+      $lt: fin
     }
+  };
 
-    const sede = req.query.sede;
+  const cerrado = await CierreInventario.findOne({
+    sede,
+    anio,
+    mes
+  })
+    .select("-claveOperacion -firmaOperacion")
+    .session(session)
+    .lean();
 
-    comprobarAcceso(req, sede);
-
-    const {
+  if (cerrado) {
+    return {
+      ok: true,
+      estado: "CERRADO",
+      puedeCerrar: false,
+      sede,
       anio,
       mes,
-      inicio,
-      fin
-    } = periodoCierre(
-      req.query.anio,
-      req.query.mes
-    );
+      cierre: cerrado,
 
-    const filtroSede = filtroSedeCierre(sede);
-
-    const filtroPeriodo = {
-      ...filtroSede,
-
-      fecha: {
-        $gte: inicio,
-        $lt: fin
-      }
+      mensaje:
+        "Este cierre ya fue aplicado. Se muestra " +
+        "el respaldo guardado; no se vuelve " +
+        "a trasladar el stock."
     };
+  }
 
-    let respuesta;
+  const anterior = await CierreInventario.findOne({
+    sede,
+    fechaFin: inicio
+  })
+    .session(session)
+    .lean();
 
-    session =
-      await mongoose.connection.startSession();
+  const productos = await Producto.find(filtroSede)
+    .select("codigo descripcion medida stock __v")
+    .session(session)
+    .lean();
 
-    await session.withTransaction(
-      async () => {
-        const cerrado = await CierreInventario
-          .findOne({
-            sede,
-            anio,
-            mes
-          })
-          .select(
-            "-claveOperacion -firmaOperacion"
+  const inventariosApertura = anterior
+    ? []
+    : await Inventario.find({
+        ...filtroSede,
+        fecha: {
+          $gte: inicio,
+          $lt: new Date(
+            inicio.getTime() + 86400000
           )
-          .session(session)
-          .lean();
-
-        if (cerrado) {
-          respuesta = {
-            ok: true,
-            estado: "CERRADO",
-            puedeCerrar: false,
-            sede,
-            anio,
-            mes,
-            cierre: cerrado,
-
-            mensaje:
-              "Este cierre ya fue aplicado. " +
-              "Se muestra el respaldo guardado; " +
-              "no se vuelve a trasladar el stock."
-          };
-
-          return;
         }
-
-        const anterior = await CierreInventario
-          .findOne({
-            sede,
-            fechaFin: inicio
-          })
-          .session(session)
-          .lean();
-
-        const productos = await Producto
-          .find(filtroSede)
-          .select(
-            "codigo descripcion medida stock"
-          )
-          .session(session)
-          .lean();
-
-          const inventariosApertura = anterior
-  ? []
-  : await Inventario.find({
-      ...filtroSede,
-
-      fecha: {
-        $gte: inicio,
-
-        $lt: new Date(
-          inicio.getTime() + 86400000
-        )
-      }
-    })
-      .select(
-        "productoId stockFisico stockReal fecha"
-      )
-      .session(session)
-      .lean();
+      })
+        .select("productoId stockFisico stockReal fecha")
+        .session(session)
+        .lean();
 
   const apertura = anterior
     ? null
@@ -439,226 +373,222 @@ export async function vistaPreviaCierreInventario(
       productoId: base.productoId,
       stockFinal: base.stockInicial
     }))
-    };
-        const entradas = await Entrada
-          .find(filtroPeriodo)
-          .select(
-            "productoId cantidad cierre"
-          )
-          .session(session)
-          .lean();
+  };
 
-        const salidas = await Salida
-          .find(filtroPeriodo)
-          .select(
-            "productoId cantidad cierre"
-          )
-          .session(session)
-          .lean();
+  const entradas = await Entrada.find(filtroPeriodo)
+    .select("productoId cantidad cierre")
+    .session(session)
+    .lean();
 
-        const vendidos = await Vendidos.aggregate([
+  const salidas = await Salida.find(filtroPeriodo)
+    .select("productoId cantidad cierre")
+    .session(session)
+    .lean();
+
+  const vendidos = await Vendidos.aggregate([
+    {
+      $match: filtroSede
+    },
+    {
+      $lookup: {
+        from: Ventas.collection.name,
+
+        let: {
+          numeroFactura: "$factura"
+        },
+
+        pipeline: [
           {
-            $match: filtroSede
-          },
-          {
-            $lookup: {
-              from: Ventas.collection.name,
-
-              let: {
-                numeroFactura: "$factura"
-              },
-
-              pipeline: [
-                {
-                  $match: {
-                    ...filtroSede,
-
-                    $expr: {
-                      $eq: [
-                        "$factura",
-                        "$$numeroFactura"
-                      ]
-                    }
-                  }
-                },
-                {
-                  $project: {
-                    fecha: 1,
-                    estado: 1,
-                    tipoMovimiento: 1
-                  }
-                }
-              ],
-
-              as: "cabeceras"
+            $match: {
+              ...filtroSede,
+              $expr: {
+                $eq: [
+                  "$factura",
+                  "$$numeroFactura"
+                ]
+              }
             }
           },
           {
             $project: {
-              productoId: 1,
-              factura: 1,
-              cantidad: 1,
-              cabeceras: 1
+              fecha: 1,
+              estado: 1,
+              tipoMovimiento: 1
             }
           }
-        ]).session(session);
+        ],
 
-        const modelos = [
-          Entrada,
-          Salida,
-          Ventas,
-          Gastos,
-          Caja,
-          Inventario,
-          Ingresos
-        ];
+        as: "cabeceras"
+      }
+    },
+    {
+      $project: {
+        productoId: 1,
+        factura: 1,
+        cantidad: 1,
+        descuentaInventario: 1,
+        cabeceras: 1
+      }
+    }
+  ]).session(session);
 
-        let documentosCerradosAnteriores = false;
+  const modelos = [
+    Entrada,
+    Salida,
+    Ventas,
+    Gastos,
+    Caja,
+    Inventario,
+    Ingresos
+  ];
 
-        for (const Modelo of modelos) {
-          const existe = await Modelo
-            .exists({
-              ...filtroPeriodo,
-              cierre: "S"
-            })
-            .session(session);
+  let documentosCerradosAnteriores = false;
 
-          if (existe) {
-            documentosCerradosAnteriores = true;
-            break;
-          }
-        }
+  for (const Modelo of modelos) {
+    const existe = await Modelo.exists({
+      ...filtroPeriodo,
+      cierre: "S"
+    }).session(session);
 
-        const {
-          detalles,
-          incidencias
-            } = resumenCierre(
-            productos,
-            entradas,
-            salidas,
-            vendidos,
-            baseParaCalculo,
-            inicio,
-            fin
+    if (existe) {
+      documentosCerradosAnteriores = true;
+      break;
+    }
+  }
+
+  const {
+    detalles,
+    incidencias
+  } = resumenCierre(
+    productos,
+    entradas,
+    salidas,
+    vendidos,
+    baseParaCalculo,
+    inicio,
+    fin
+  );
+
+  if (apertura) {
+    incidencias.push(...apertura.incidencias);
+  }
+
+  const observaciones = [];
+
+  if (!anterior && !apertura.bases.length) {
+    observaciones.push(
+      "No se encontró una apertura válida en el " +
+      "inventario físico del primer día del mes."
+    );
+  }
+
+  if (detalles.some(fila => !fila.baseConfirmada)) {
+    observaciones.push(
+      "Hay productos sin saldo inicial respaldado " +
+      "para este mes. Su saldo simulado no debe " +
+      "trasladarse automáticamente."
+    );
+  }
+
+  if (documentosCerradosAnteriores) {
+    observaciones.push(
+      "Existen documentos marcados como cerrados " +
+      "por el procedimiento anterior. Este mes " +
+      "requiere conciliación; no debe cerrarse " +
+      "otra vez automáticamente."
+    );
+  }
+
+  if (incidencias.length) {
+    observaciones.push(
+      "Hay registros inconsistentes que requieren revisión."
+    );
+  }
+
+  const hoyTexto = new Intl.DateTimeFormat(
+    "sv-SE",
+    {
+      timeZone: "America/Caracas",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit"
+    }
+  ).format(new Date());
+
+  const periodoTerminado =
+    fin <= new Date(`${hoyTexto}T00:00:00.000Z`);
+
+  if (!periodoTerminado) {
+    observaciones.push(
+      "El período todavía no ha terminado."
+    );
+  }
+
+  if (!detalles.length) {
+    observaciones.push(
+      "La sede no tiene productos para evaluar."
+    );
+  }
+
+  return {
+    ok: true,
+    soloLectura: true,
+    estado: "VISTA_PREVIA",
+    sede,
+    anio,
+    mes,
+    fechaInicio: inicio,
+    fechaFin: fin,
+    cierreAnteriorId: anterior?._id || null,
+
+    origenBase: anterior
+      ? "CIERRE_ANTERIOR"
+      : "INVENTARIO_FISICO",
+
+    aperturaInventario: apertura,
+    documentosCerradosAnteriores,
+
+    baseConfirmada:
+      detalles.length > 0 &&
+      detalles.every(fila => fila.baseConfirmada),
+
+    condicionesInventarioCumplidas:
+      observaciones.length === 0,
+
+    puedeCerrar: false,
+    detalles,
+    incidencias,
+    observaciones,
+
+    mensaje:
+      "Esta consulta no modifica stock ni documentos. " +
+      "La confirmación del cierre todavía no está habilitada."
+  };
+}
+
+export async function vistaPreviaCierreInventario(
+  req,
+  res
+) {
+  let session;
+
+  try {
+    session = await mongoose.connection.startSession();
+
+    let respuesta;
+
+    await session.withTransaction(
+      async () => {
+        respuesta =
+          await leerVistaPreviaCierreInventario(
+            req,
+            session
           );
-
-        if (apertura) {
-          incidencias.push(
-          ...apertura.incidencias
-          );
-        }
-
-        const observaciones = [];
-
-        if (
-          !anterior &&
-          !apertura.bases.length
-        ) {
-        observaciones.push(
-          "No se encontró una apertura válida " +
-          "en el inventario físico del primer día del mes."
-        );
-        }
-
-        if (
-          detalles.some(
-            fila => !fila.baseConfirmada
-          )
-        ) {
-          observaciones.push(
-            "Hay productos sin saldo inicial respaldado " +
-            "para este mes. Su saldo simulado no debe " +
-            "trasladarse automáticamente."
-          );
-        }
-
-        if (documentosCerradosAnteriores) {
-          observaciones.push(
-            "Existen documentos marcados como cerrados " +
-            "por el procedimiento anterior. Este mes " +
-            "requiere conciliación; no debe cerrarse " +
-            "otra vez automáticamente."
-          );
-        }
-
-        if (incidencias.length) {
-          observaciones.push(
-            "Hay registros inconsistentes " +
-            "que requieren revisión."
-          );
-        }
-
-        const hoyTexto =
-          new Intl.DateTimeFormat("sv-SE", {
-            timeZone: "America/Caracas",
-            year: "numeric",
-            month: "2-digit",
-            day: "2-digit"
-          }).format(new Date());
-
-        const periodoTerminado =
-          fin <= new Date(
-            `${hoyTexto}T00:00:00.000Z`
-          );
-
-        if (!periodoTerminado) {
-          observaciones.push(
-            "El período todavía no ha terminado."
-          );
-        }
-
-        if (!detalles.length) {
-          observaciones.push(
-            "La sede no tiene productos para evaluar."
-          );
-        }
-
-        respuesta = {
-          ok: true,
-          soloLectura: true,
-          origenBase: anterior
-            ? "CIERRE_ANTERIOR"
-            : "INVENTARIO_FISICO",
-          aperturaInventario: apertura,
-          estado: "VISTA_PREVIA",
-          sede,
-          anio,
-          mes,
-
-          fechaInicio: inicio,
-          fechaFin: fin,
-
-          cierreAnteriorId:
-            anterior?._id || null,
-
-          documentosCerradosAnteriores,
-
-          baseConfirmada:
-            detalles.length > 0 &&
-            detalles.every(
-              fila => fila.baseConfirmada
-            ),
-
-          condicionesInventarioCumplidas:
-            observaciones.length === 0,
-
-          puedeCerrar: false,
-
-          detalles,
-          incidencias,
-          observaciones,
-
-          mensaje:
-            "Esta consulta no modifica stock ni " +
-            "documentos. La confirmación del cierre " +
-            "todavía no está habilitada."
-        };
       },
       {
         readConcern: {
           level: "snapshot"
         },
-
         readPreference: "primary"
       }
     );

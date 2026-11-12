@@ -6,13 +6,32 @@ import Salida from "../models/dbSalidas.js";
 import Vendidos from "../models/dbVendidos.js";
 import Ventas from "../models/dbVentas.js";
 import mongoose from "mongoose";
-
+import {
+  inventarioConApertura,
+  reporteInventarioConApertura,
+  stockRealConApertura
+} from "../controllers/inventarioConApertura.js";
 
 // Si ya tienes ventas, importa:
 //import Venta from "../models/ventas.js";
 // Si NO existe ventas aún, comenta esta línea
 
 const router = express.Router();
+
+router.get(
+  "/",
+  inventarioConApertura
+);
+
+router.get(
+  "/reporte",
+  reporteInventarioConApertura
+);
+
+router.get(
+  "/stock-real/:codigo",
+  stockRealConApertura
+);
 
 /*
   GET /api/inventario?fecha=YYYY-MM-DD&categoria=ALB

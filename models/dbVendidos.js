@@ -1,6 +1,5 @@
 import mongoose from "mongoose";
 
-// DISTRIBUCIÓN DE LOS HUEVOS VENDIDOS ENTRE GRUPOS
 const asignacionSchema = new mongoose.Schema(
   {
     grupoId: {
@@ -11,13 +10,9 @@ const asignacionSchema = new mongoose.Schema(
 
     unidades: {
       type: Number,
-      required: true,
       min: 1,
-      validate: {
-        validator: Number.isSafeInteger,
-        message:
-          "La cantidad de huevos debe ser un número entero."
-      }
+      required: true,
+      validate: Number.isSafeInteger
     }
   },
   {
@@ -36,6 +31,13 @@ const VendidoSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "Producto",
       required: true
+    },
+
+    // Los encargos sin entrega no descuentan inventario.
+    // El controlador establecerá false para los créditos.
+    descuentaInventario: {
+      type: Boolean,
+      default: true
     },
 
     cantidad: {
@@ -65,13 +67,9 @@ const VendidoSchema = new mongoose.Schema(
       required: true
     },
 
-    // ORIGEN Y COSTO AL MOMENTO DE LA VENTA
     origenProducto: {
       type: String,
-      enum: [
-        "COMPRADO",
-        "PRODUCCION_MONASTERIO"
-      ],
+      enum: ["COMPRADO", "PRODUCCION_MONASTERIO"],
       default: undefined
     },
 
@@ -81,14 +79,12 @@ const VendidoSchema = new mongoose.Schema(
       default: undefined
     },
 
-    // ACTIVIDAD PRODUCTIVA AL MOMENTO DE VENDER
     actividadProductiva: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "ActividadProductiva",
       default: null
     },
 
-    // PARTICIPACIÓN ENTRE SEDES
     generaParticipacion: {
       type: Boolean,
       default: false
@@ -96,21 +92,13 @@ const VendidoSchema = new mongoose.Schema(
 
     beneficiarioParticipacion: {
       type: String,
-      enum: [
-        "TIENDITA",
-        "MONASTERIO",
-        "NINGUNO"
-      ],
+      enum: ["TIENDITA", "MONASTERIO", "NINGUNO"],
       default: "NINGUNO"
     },
 
     tipoParticipacion: {
       type: String,
-      enum: [
-        "NINGUNA",
-        "PORCENTAJE",
-        "MONTO_FIJO"
-      ],
+      enum: ["NINGUNA", "PORCENTAJE", "MONTO_FIJO"],
       default: "NINGUNA"
     },
 
@@ -124,16 +112,11 @@ const VendidoSchema = new mongoose.Schema(
       default: 0
     },
 
-    // CONTROL DE HUEVOS
     huevosUnidades: {
       type: Number,
       min: 1,
       default: undefined,
-      validate: {
-        validator: Number.isSafeInteger,
-        message:
-          "La cantidad de huevos debe ser un número entero."
-      }
+      validate: Number.isSafeInteger
     },
 
     fechaVentaHuevos: {
@@ -151,7 +134,6 @@ const VendidoSchema = new mongoose.Schema(
   }
 );
 
-// VALIDAR LA CANTIDAD Y SU DISTRIBUCIÓN POR GRUPO
 VendidoSchema.pre("validate", function () {
   const tieneControlHuevos =
     this.huevosUnidades !== undefined ||
@@ -163,13 +145,11 @@ VendidoSchema.pre("validate", function () {
   const asignaciones = this.asignacionesHuevos || [];
 
   const grupos = asignaciones.map(
-    (asignacion) =>
-      String(asignacion.grupoId || "SIN_GRUPO")
+    item => String(item.grupoId || "SIN_GRUPO")
   );
 
   const totalAsignado = asignaciones.reduce(
-    (suma, asignacion) =>
-      suma + asignacion.unidades,
+    (suma, item) => suma + item.unidades,
     0
   );
 

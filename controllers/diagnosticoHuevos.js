@@ -8,7 +8,9 @@ import {
   comprobarAcceso,
   fallo
 } from "../utils/controlCaja.js";
-
+import {
+  saldoInventario
+} from "../utils/saldoInventario.js";
 import {
   configuracionHuevos,
   productoDeHuevos,
@@ -98,16 +100,20 @@ export async function diagnosticoHuevos(req, res) {
           0
         );
 
-      const inicial = Number(producto.stock || 0);
-      const entradasCartones = sumar(entradas);
-      const salidasCartones = sumar(salidas);
-      const ventasCartones = sumar(ventas);
+      const saldoAplicable = await saldoInventario(
+  {
+    ...producto,
+    _id: productoId
+  },
+  sede,
+  session
+);
 
-      const general =
-        inicial +
-        entradasCartones -
-        salidasCartones -
-        ventasCartones;
+const inicial = saldoAplicable.stockInicial;
+const entradasCartones = saldoAplicable.totalEntradas;
+const salidasCartones = saldoAplicable.totalSalidas;
+const ventasCartones = saldoAplicable.totalVentas;
+const general = saldoAplicable.stockReal;
 
       const eventos = registro.eventos.filter(
         evento => evento.sede === sede
@@ -275,6 +281,8 @@ const salidasManualesDesdeActivacion =
         },
 
         activacion: config.fechaInicioControl,
+        fechaBaseInventario: saldoAplicable.fechaBase,
+        incidenciasInventario: saldoAplicable.incidencias,
 
         resumenCartones: {
           stockInicial: inicial,
@@ -285,11 +293,17 @@ const salidasManualesDesdeActivacion =
         },
 
         resumenHuevos: {
-          existenciaGeneral: Math.round(general * 30),
+          existenciaGeneral:
+            general === null
+            ? null
+            : Math.round(general * 30),
+
           saldoGrupos: huevosGrupos,
 
           diferenciaGeneralMenosGrupos:
-            Math.round(general * 30) - huevosGrupos
+            general === null
+            ? null
+            : Math.round(general * 30) - huevosGrupos
         },
 
         grupos,

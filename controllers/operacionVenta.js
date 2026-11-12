@@ -7,7 +7,6 @@ import Moneda from "../models/dbMoneda.js";
 import Producto from "../models/Producto.js";
 import Tasas from "../models/dbTasas.js";
 import Contador from "../models/Contador.js";
-
 import {
   diaComercial,
   fallo,
@@ -16,7 +15,11 @@ import {
 
 import {
   prepararVentaHuevos
-} from "../utils/inventarioHuevos.js";
+} from "../utils/ventaHuevosConAlerta.js";
+
+import {
+  advertenciasInventarioVenta
+} from "../utils/advertenciasInventarioVenta.js";
 
 const porSede = (sede) =>
   sede === "MONASTERIO"
@@ -314,13 +317,15 @@ export async function guardarOperacionCompleta(req, res) {
     );
 
     if (aplicada) {
-      return res.json({
-        ok: true,
-        factura: aplicada.factura,
-        idVenta: aplicada._id,
-        repetida: true
-      });
-    }
+  return res.json({
+    ok: true,
+    factura: aplicada.factura,
+    idVenta: aplicada._id,
+    repetida: true,
+    advertencias:
+      aplicada.ultimaOperacionAlertas || []
+  });
+}
 
     let venta = body.ventaId
       ? await Ventas
@@ -447,6 +452,28 @@ export async function guardarOperacionCompleta(req, res) {
     const puedeTomarCostoActual =
       esVentaNueva &&
       diaComercial(fecha) === fechaActualVenezuela();
+
+      const entregasAnteriores = new Map();
+
+for (const anterior of renglonesAnterioresHuevos) {
+  const clave = String(anterior.productoId);
+  const descontar =
+    anterior.descuentaInventario !== false;
+
+  if (
+    entregasAnteriores.has(clave) &&
+    entregasAnteriores.get(clave) !== descontar
+  ) {
+    throw fallo(
+      409,
+      "La factura combina apartados y entregas " +
+      "del mismo producto. Debe revisarse " +
+      "antes de modificarla."
+    );
+  }
+
+  entregasAnteriores.set(clave, descontar);
+}
 
     const lineas = [];
     let subtotal = 0;
@@ -591,7 +618,15 @@ export async function guardarOperacionCompleta(req, res) {
       }
 
       lineas.push({
-        ...datosCosto,
+  ...datosCosto,
+
+  descuentaInventario: body.modoCredito
+    ? false
+    : (
+        entregasAnteriores.get(
+          String(producto._id)
+        ) ?? true
+      ),
         productoId: producto._id,
         cantidad,
         precio,
@@ -609,15 +644,27 @@ export async function guardarOperacionCompleta(req, res) {
     }
 
     // COMPROBAR Y ASIGNAR LOS HUEVOS POR GRUPO
-    await prepararVentaHuevos({
-      lineas,
-      anteriores: renglonesAnterioresHuevos,
-      factura: venta?.factura,
-      sede,
-      fecha: diaComercial(fecha),
-      fechaAnterior: venta?.fecha,
-      session
-    });
+    const advertenciasHuevos = await prepararVentaHuevos({
+  lineas,
+  anteriores: renglonesAnterioresHuevos,
+  factura: venta?.factura,
+  sede,
+  fecha: diaComercial(fecha),
+  fechaAnterior: venta?.fecha,
+  session
+});
+
+const advertencias = [
+  ...advertenciasHuevos,
+
+  ...await advertenciasInventarioVenta(
+    lineas,
+    sede,
+    diaComercial(fecha),
+    venta?.factura,
+    session
+  )
+];
 
     const total = subtotal * (1 + IVA / 100);
 
@@ -917,29 +964,67 @@ export async function guardarOperacionCompleta(req, res) {
 
     // IDENTIFICAR LA OPERACIÓN PARA RECONOCER REINTENTOS
     await Ventas.collection.updateOne(
+  {
+    _id: venta._id
+  },
+  {
+    $set: {
+      ultimaOperacionId: body.operacionId,
+      ultimaOperacionUsuario: req.usuarioCaja._id,
+      ultimaOperacionAlertas: advertencias
+    }
+  },
+  {
+    session
+  }
+);
+
+// Conservar las alertas para revisión administrativa.
+if (advertencias.length) {
+  const alertaId = createHash("sha256")
+    .update(
+      "alerta-stock:" +
+      venta._id +
+      ":" +
+      body.operacionId
+    )
+    .digest("hex");
+
+  await mongoose.connection.db
+    .collection("alertasInventarioVentas")
+    .updateOne(
       {
-        _id: venta._id
+        _id: alertaId
       },
       {
-        $set: {
-          ultimaOperacionId: body.operacionId,
-          ultimaOperacionUsuario:
-            req.usuarioCaja._id
+        $setOnInsert: {
+          ventaId: venta._id,
+          factura,
+          sede,
+          fechaVenta: fecha,
+          registradoEl: new Date(),
+          registradoPor: req.usuarioCaja._id,
+          estado: "PENDIENTE",
+          advertencias
         }
       },
       {
+        upsert: true,
         session
       }
     );
+}
 
     return res.json({
-      ok: true,
-      factura,
-      idVenta: venta._id,
-      idPago: pago?._id || null,
-      idVuelto: vuelto?._id || null,
-      versionVenta: venta.__v || 0
-    });
+  ok: true,
+  factura,
+  idVenta: venta._id,
+  idPago: pago?._id || null,
+  idVuelto: vuelto?._id || null,
+  versionVenta: venta.__v || 0,
+  advertencias
+});
+
   } catch (error) {
     if (
       error.code === 112 ||
