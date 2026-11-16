@@ -58,7 +58,7 @@ app.use(cors({
     "http://localhost:5173",
     "https://sistema-ventas-frontend-tan.vercel.app"
   ],
-  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
   allowedHeaders: ["Content-Type", "Authorization"],
   credentials: true
 }));
