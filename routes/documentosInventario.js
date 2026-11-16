@@ -14,7 +14,9 @@ import {
   obtenerDocumento,
   crearDocumento,
   revisarDocumento,
-  eliminarDocumento
+  eliminarDocumento,
+  modificarCantidadArticulo,
+  eliminarArticulo
 } from "../controllers/documentosInventario.js";
 
 const router = express.Router();
@@ -22,7 +24,7 @@ const router = express.Router();
 // Todas las rutas requieren sesión.
 router.use(autenticar);
 
-// Debe aparecer antes de la ruta /:id.
+// Debe aparecer antes de /:id.
 router.get(
   "/opciones",
   opcionesDocumentos
@@ -46,11 +48,22 @@ router.post(
   operacionDocumento(crearDocumento)
 );
 
-// Verificar o reabrir.
-// El controlador exige administrador.
+// Verificar o reabrir un documento.
 router.post(
   "/:id/revision",
   operacionDocumento(revisarDocumento)
+);
+
+// Modificar la cantidad de un artículo.
+router.patch(
+  "/:id/articulos/:articuloId",
+  operacionDocumento(modificarCantidadArticulo)
+);
+
+// Eliminar únicamente un artículo.
+router.delete(
+  "/:id/articulos/:articuloId",
+  operacionDocumento(eliminarArticulo)
 );
 
 // Eliminar el documento completo.

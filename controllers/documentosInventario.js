@@ -907,23 +907,20 @@ async function auditarDocumento(
   session,
   accion,
   antes,
-  despues
+  despues,
+  contexto = {}
 ) {
   await mongoose.connection.db
     .collection("auditoriaDocumentosInventario")
     .insertOne(
       {
-        documentoId:
-          despues?._id || antes?._id,
-
+        documentoId: despues?._id || antes?._id,
         referencia:
-          despues?.referencia ||
-          antes?.referencia,
-
+          despues?.referencia || antes?.referencia,
         accion,
+        ...contexto,
         usuarioId: req.usuarioCaja._id,
         fecha: new Date(),
-
         antes: antes || null,
         despues: despues || null
       },
@@ -1295,3 +1292,306 @@ export async function eliminarDocumento(
       "Se conservó la auditoría y el motivo."
   };
 }
+
+// ==========================================
+// CORREGIR UN ARTÍCULO DEL DOCUMENTO
+// ==========================================
+async function cambiarArticulo(
+  req,
+  session,
+  eliminar
+) {
+  const documento = await cargarDocumentoParaCambiar(
+    req,
+    session
+  );
+
+  if (
+    !["ADMINISTRADOR", "SUPERVISOR"].includes(
+      req.usuarioCaja?.rol
+    )
+  ) {
+    throw fallo(
+      403,
+      "La corrección corresponde al administrador o al supervisor."
+    );
+  }
+
+  if (documento.estado !== "PENDIENTE") {
+    throw fallo(
+      409,
+      "Reabra el documento verificado antes de corregirlo."
+    );
+  }
+
+  if (documento.cierre === "S") {
+    throw fallo(
+      423,
+      "El documento pertenece a un período cerrado."
+    );
+  }
+
+  if (documento.motivo === "AJUSTE") {
+    exigirAdministrador(req);
+  }
+
+  const articuloId = identificador(
+    req.params.articuloId
+  );
+
+  const detalle = documento.detalles.find(
+    fila => String(fila._id) === String(articuloId)
+  );
+
+  if (!detalle) {
+    throw fallo(
+      404,
+      "Artículo no encontrado en el documento."
+    );
+  }
+
+  if (
+    eliminar &&
+    documento.detalles.length === 1
+  ) {
+    throw fallo(
+      409,
+      "No puede quitar el último artículo. " +
+      "Utilice Eliminar documento completo."
+    );
+  }
+
+  const cantidad = eliminar
+    ? 0
+    : req.body?.cantidad;
+
+  if (
+    !eliminar &&
+    (
+      typeof cantidad !== "number" ||
+      !Number.isFinite(cantidad) ||
+      cantidad <= 0
+    )
+  ) {
+    throw fallo(
+      400,
+      "La cantidad debe ser un número mayor que cero."
+    );
+  }
+
+  const motivo = texto(
+    req.body?.motivoCorreccion
+  );
+
+  if (!motivo) {
+    throw fallo(
+      400,
+      "Indique el motivo de la corrección."
+    );
+  }
+
+  await comprobarDiaHuevos(
+    documento.fecha.toISOString().slice(0, 10),
+    documento.sede,
+    session
+  );
+
+  await comprobarArticulosDocumento(
+    documento,
+    session
+  );
+
+  const config = await ConfiguracionHuevos
+    .findById("HUEVOS")
+    .session(session)
+    .lean();
+
+  const idsHuevos = config
+    ? [
+        config.productoMonasterioId,
+        config.productoTienditaId
+      ].map(String)
+    : [];
+
+  if (
+    idsHuevos.includes(
+      String(detalle.productoId)
+    )
+  ) {
+    throw fallo(
+      409,
+      "Este producto tiene control de huevos. " +
+      "Corríjalo desde su módulo."
+    );
+  }
+
+  const producto = await Producto
+    .findById(detalle.productoId)
+    .session(session)
+    .lean();
+
+  if (
+    !producto ||
+    (producto.sede || "TIENDITA") !== documento.sede
+  ) {
+    throw fallo(
+      409,
+      "El producto ya no pertenece a la sede del documento."
+    );
+  }
+
+  const controlado = await Entrada.findOne({
+    productoId: detalle.productoId,
+    $or: [
+      { loteId: { $ne: null } },
+      { produccionId: { $ne: null } }
+    ]
+  })
+    .select("_id")
+    .session(session)
+    .lean();
+
+  if (controlado) {
+    throw fallo(
+      409,
+      "Este producto tiene seguimiento por lote. " +
+      "Corríjalo desde su módulo."
+    );
+  }
+
+  // Coordinar operaciones sobre el mismo producto.
+  await Producto.updateOne(
+    { _id: producto._id },
+    { $inc: { __v: 1 } },
+    { session }
+  );
+
+  const antes = documento.toObject();
+
+  const Modelo = documento.tipo === "ENTRADA"
+    ? Entrada
+    : Salida;
+
+  const movimientoId = documento.tipo === "ENTRADA"
+    ? detalle.entradaId
+    : detalle.salidaId;
+
+  const filtro = {
+    _id: movimientoId,
+    productoId: detalle.productoId,
+    cantidad: detalle.cantidad,
+    cierre: { $ne: "S" },
+    gastoId: null,
+    loteId: null,
+    produccionId: null,
+    consumoId: null,
+    envioId: null,
+    movimientoHuevosId: null,
+    grupoGallinasId: null,
+    huevosUnidades: { $exists: false }
+  };
+
+  let resultado;
+
+  if (eliminar) {
+    resultado = await Modelo.deleteOne(
+      filtro,
+      {
+        session,
+        strictQuery: false
+      }
+    );
+  } else {
+    resultado = await Modelo.updateOne(
+      filtro,
+      {
+        $set: { cantidad },
+        $inc: { __v: 1 }
+      },
+      {
+        session,
+        strictQuery: false,
+        runValidators: true
+      }
+    );
+  }
+
+  const afectados = eliminar
+    ? resultado.deletedCount
+    : resultado.matchedCount;
+
+  if (afectados !== 1) {
+    throw fallo(
+      409,
+      "El movimiento está cerrado, vinculado o cambió. " +
+      "Actualice el documento."
+    );
+  }
+
+  // Comprobar el saldo con el movimiento corregido.
+  // Si falla, la transacción revierte los cambios.
+  const saldo = await existenciaDocumento(
+    producto,
+    documento.sede,
+    session
+  );
+
+  if (
+    !Number.isFinite(saldo) ||
+    saldo < -0.0000001
+  ) {
+    throw fallo(
+      409,
+      "La corrección dejaría existencias negativas " +
+      "o un saldo inválido."
+    );
+  }
+
+  if (eliminar) {
+    documento.detalles = documento.detalles.filter(
+      fila => String(fila._id) !== String(articuloId)
+    );
+  } else {
+    detalle.cantidad = cantidad;
+  }
+
+  // Consumir la versión incluso si la cantidad es igual.
+  documento.markModified("detalles");
+
+  await documento.save({ session });
+
+  await auditarDocumento(
+    req,
+    session,
+    eliminar
+      ? "ELIMINAR_ARTICULO"
+      : "MODIFICAR_CANTIDAD",
+    antes,
+    documento.toObject(),
+    {
+      motivoCorreccion: motivo,
+      articuloCorregidoId: articuloId,
+      claveOperacion: req.body.claveOperacion
+    }
+  );
+
+  return {
+    ok: true,
+    id: String(documento._id),
+    referencia: documento.referencia,
+    version: documento.__v,
+    mensaje: eliminar
+      ? "Artículo eliminado."
+      : "Cantidad actualizada."
+  };
+}
+
+export const modificarCantidadArticulo = (
+  req,
+  session
+) => cambiarArticulo(req, session, false);
+
+export const eliminarArticulo = (
+  req,
+  session
+) => cambiarArticulo(req, session, true);
