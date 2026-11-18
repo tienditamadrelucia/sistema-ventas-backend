@@ -315,20 +315,19 @@ router.post("/", async (req, res) => {
 
         datos.billetes[moneda] = {};
 
-        for (
-          const [denominacion, cantidad]
-          of Object.entries(grupo)
-        ) {
-          if (
-            !/^\d+(\.\d+)?$/.test(denominacion) ||
-            !Number.isInteger(cantidad) ||
-            cantidad < 0
-          ) {
-            throw fallo(400, "Billetes inválidos");
-          }
-
-          datos.billetes[moneda][denominacion] = cantidad;
+        
+      for (const [denominacion, cantidad] of Object.entries(grupo)) {
+        const numero = cantidad === "" ? 0 : Number(cantidad);
+        if (!/^\d+(\.\d+)?$/.test(denominacion) ||
+          cantidad === null ||
+          typeof cantidad === "boolean" ||
+          (typeof cantidad !== "string" && typeof cantidad !== "number") ||
+          (typeof cantidad === "string" && cantidad.trim() !== "" && !/^\d+$/.test(cantidad.trim())) ||
+          !Number.isSafeInteger(numero) || numero < 0) {
+          throw fallo(400, `Cantidad de billetes inválida: ${moneda} ${denominacion}`);
         }
+        datos.billetes[moneda][denominacion] = numero;
+      }
       }
     }
 
