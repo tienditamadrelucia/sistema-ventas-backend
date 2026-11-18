@@ -1,5 +1,5 @@
 import express from "express";
-
+import mongoose from "mongoose";
 import {
   autenticar,
   comprobarAcceso,
@@ -27,42 +27,16 @@ const router = express.Router();
 router.use(autenticar);
 
 // Compartir el control de fecha y sede con las ventas.
-router.use(
-  protegerEscrituras(
-    async req => {
-      if (req.method !== "POST") {
-        throw fallo(
-          403,
-          "Operación de caja no reconocida"
-        );
-      }
-
-      const ruta = req.path.replace(/\/$/, "") || "/";
-
-      const verificacion =
-        /^\/verificacion\/(\d{4}-\d{2}-\d{2})$/.exec(ruta);
-
-      if (ruta !== "/" && !verificacion) {
-        throw fallo(
-          403,
-          "Operación de caja no reconocida"
-        );
-      }
-
-      return [{
-        fecha: verificacion
-          ? verificacion[1]
-          : req.body?.fecha,
-        sede: req.body?.sede || "TIENDITA"
-      }];
-    },
-    {
-      // Las acciones de verificación y reapertura
-      // realizan sus propias comprobaciones más abajo.
-      permitirVerificada: true
-    }
-  )
-);
+router.use(protegerEscrituras(async req => {
+  if (!["POST", "PUT"].includes(req.method)) throw fallo(403, "Operación de caja no reconocida");
+  const ruta = req.path.replace(/\/$/, "") || "/";
+  const verificacion = /^\/verificacion\/(\d{4}-\d{2}-\d{2})$/.exec(ruta);
+  if (ruta !== "/" && !verificacion) throw fallo(403, "Operación de caja no reconocida");
+  return [{
+    fecha: verificacion ? verificacion[1] : req.body?.fecha,
+    sede: req.body?.sede || "TIENDITA"
+  }];
+}, { permitirVerificada: true }));
 
 // =====================================================
 // CONSULTAR VERIFICACIÓN
@@ -339,6 +313,14 @@ router.post("/", async (req, res) => {
       datos.cierre = body.cierre;
     }
 
+    const existentes = await registrosCaja(fecha, sede, req.cajaMongo);
+    const duplicado = existentes.some(r =>
+      r.tipoRegistro !== "CONTROL_DIA" &&
+      r.cajaChica &&
+      r.billetes
+      );
+      if (duplicado) throw fallo(409, "Ya existe un cuadre para esta fecha y sede. Utilice Actualizar.");
+
     // No aceptar campos de verificación enviados
     // mediante el guardado normal de caja.
     const resultado = await coleccionesCaja()[0]
@@ -358,6 +340,61 @@ router.post("/", async (req, res) => {
   }
 });
 
+
+router.put("/", async (req, res) => {
+  try {
+    const body = req.body || {};
+    const sede = body.sede || "TIENDITA";
+    const fecha = diaComercial(body.fecha);
+    comprobarAcceso(req, sede);
+    if (!mongoose.isValidObjectId(body._id)) throw fallo(400, "Identificador de cuadre inválido");
+    await comprobarAbierta(fecha, sede, req.cajaMongo);
+    const colecciones = coleccionesCaja();
+    let coleccion = null, anterior = null;
+    for (const actual of colecciones) {
+      const encontrado = await actual.findOne({ _id: new mongoose.Types.ObjectId(body._id) }, { session: req.cajaMongo });
+      if (encontrado) {
+        coleccion = actual;
+        anterior = encontrado;
+        break;
+      }
+    }
+    if (!anterior || anterior.tipoRegistro === "CONTROL_DIA") throw fallo(404, "No se encontró el cuadre");
+    if (diaComercial(anterior.fecha) !== fecha || (anterior.sede || "TIENDITA") !== sede) throw fallo(409, "El cuadre no corresponde a la fecha o sede seleccionada");
+    const datos = {};
+    for (const campo of ["cajaChica", "ventas", "gastos", "esperado", "contado", "diferencia"]) {
+      const grupo = body[campo];
+      if (!grupo || typeof grupo !== "object" || Array.isArray(grupo)) throw fallo(400, `Datos inválidos: ${campo}`);
+      datos[campo] = {};
+      for (const moneda of ["D", "P", "Bs"]) {
+        const valor = grupo[moneda];
+        if (typeof valor !== "number" || !Number.isFinite(valor)) throw fallo(400, `Importe inválido: ${campo}.${moneda}`);
+        datos[campo][moneda] = valor;
+      }
+    }
+    datos.billetes = {};
+    for (const moneda of ["D", "P", "Bs"]) {
+      const grupo = body.billetes?.[moneda];
+      if (!grupo || typeof grupo !== "object" || Array.isArray(grupo)) throw fallo(400, "Billetes inválidos");
+      datos.billetes[moneda] = {};
+      for (const [denominacion, cantidad] of Object.entries(grupo)) {
+        if (!/^\d+(\.\d+)?$/.test(denominacion) || !Number.isInteger(cantidad) || cantidad < 0) throw fallo(400, "Billetes inválidos");
+        datos.billetes[moneda][denominacion] = cantidad;
+      }
+    }
+    datos.compensacion = {};
+    for (const moneda of ["D", "P"]) {
+      const valor = body.compensacion?.[moneda];
+      if (typeof valor !== "number" || !Number.isFinite(valor)) throw fallo(400, "Compensación inválida");
+      datos.compensacion[moneda] = valor;
+    }
+    const resultado = await coleccion.updateOne({ _id: anterior._id }, { $set: datos }, { session: req.cajaMongo });
+    if (resultado.matchedCount !== 1) throw fallo(409, "No se pudo actualizar el cuadre");
+    return res.json({ ok: true, id: anterior._id });
+  } catch (error) {
+    return responderFallo(res, error);
+  }
+});
 
 router.get("/revision-diaria", obtenerRevisionDiaria);
 
