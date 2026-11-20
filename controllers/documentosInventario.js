@@ -1156,25 +1156,21 @@ export async function eliminarDocumento(
       );
     }
 
-    const controlado = await Entrada
-      .findOne({
-        productoId: detalle.productoId,
-        $or: [
-          { loteId: { $ne: null } },
-          { produccionId: { $ne: null } }
-        ]
-      })
-      .select("_id")
-      .session(session)
-      .lean();
+    const movimientoManual = await Entrada.findById(detalle.entradaId)
+  .session(session)
+  .lean();
 
-    if (controlado) {
-      throw fallo(
-        409,
-        `El producto ${detalle.codigo} ahora tiene ` +
-        "seguimiento por lote. Revíselo antes de eliminar."
-      );
-    }
+if (documento.tipo === "ENTRADA" && (
+  !movimientoManual ||
+  movimientoManual.loteId != null ||
+  movimientoManual.produccionId != null ||
+  movimientoManual.envioId != null
+)) {
+  throw fallo(409,
+    `La entrada del producto ${detalle.codigo} está vinculada ` +
+    "a un lote, producción o envío, o ya no existe."
+  );
+}
 
     await Producto.updateOne(
       { _id: producto._id },
