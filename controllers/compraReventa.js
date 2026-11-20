@@ -279,73 +279,25 @@ async function comprobarFechaCompra(
   return redondear(cantidadPosterior, 3);
 }
 
-function calcularPromedioCompra(
-  existencias,
-  vendidosPosteriores,
-  cantidadCompra,
-  costoAnterior,
-  costoTotalUSD
-) {
-  // Recuperar las unidades vendidas después
-  // para calcular el promedio desde la compra.
-  const base = redondear(
-    existencias + vendidosPosteriores,
-    3
-  );
 
-  const saldoFinal = redondear(
-    existencias + cantidadCompra,
-    3
-  );
-
-  if (
-    !Number.isFinite(base) ||
-    base < 0 ||
-    !Number.isFinite(saldoFinal) ||
-    saldoFinal < 0
-  ) {
-    throw fallo(
-      409,
-      "Revise las existencias: la compra no " +
-      "corrige los saldos negativos del producto."
-    );
+function calcularPromedioCompra(existencias, vendidosPosteriores, cantidadCompra, costoAnterior, costoTotalUSD) {
+  const base = redondear(existencias + vendidosPosteriores, 3);
+  const saldoFinal = redondear(existencias + cantidadCompra, 3);
+  if (!Number.isFinite(base) || base < 0 || !Number.isFinite(saldoFinal) || saldoFinal < 0) {
+    throw fallo(409, "Revise las existencias: la compra no corrige los saldos negativos del producto.");
   }
-
-  if (
-    base > 0 &&
-    (
-      !Number.isFinite(costoAnterior) ||
-      costoAnterior <= 0
-    )
-  ) {
-    throw fallo(
-      409,
-      "Debe confirmar el costo de las " +
-      "existencias anteriores a la compra."
-    );
+  const costoNuevo = redondear(costoTotalUSD / cantidadCompra);
+  if (!Number.isFinite(costoNuevo) || costoNuevo <= 0) {
+    throw fallo(400, "El costo de la nueva compra es inválido.");
   }
-
-  const promedio = redondear(
-    (
-      base *
-        (base > 0 ? costoAnterior : 0) +
-      costoTotalUSD
-    ) /
-    (base + cantidadCompra)
-  );
-
-  if (
-    !Number.isFinite(promedio) ||
-    promedio <= 0
-  ) {
-    throw fallo(
-      409,
-      "No se pudo calcular un costo promedio válido."
-    );
+  const costoBase = Number.isFinite(costoAnterior) && costoAnterior > 0 ? costoAnterior : costoNuevo;
+  const promedio = redondear((base * costoBase + costoTotalUSD) / (base + cantidadCompra));
+  if (!Number.isFinite(promedio) || promedio <= 0) {
+    throw fallo(409, "No se pudo calcular un costo promedio válido.");
   }
-
   return promedio;
 }
+
 
 export async function guardarCompraReventa(req, res) {
   try {
