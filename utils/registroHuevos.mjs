@@ -105,26 +105,25 @@ export function eventosHuevos(movimientos, vendidos) {
 }
 
 // COMPROBAR QUE NO QUEDEN EXISTENCIAS NEGATIVAS
-export function validarExistencias(eventos) {
+export function validarExistencias(eventos, opciones = {}) {
   const saldos = new Map();
+  const permitirRecuperacion = opciones.permitirRecuperacion === true;
+  const saldosAnteriores = opciones.saldosAnteriores || null;
+  const minimos = new Map();
 
   for (const evento of eventos) {
-    const clave =
-      `${evento.sede}:${evento.grupoId}`;
-
-    const saldo = sumarSeguro(
-      saldos.get(clave) || 0,
-      evento.unidades
-    );
-
-    if (saldo < 0) {
-      throw new Error(
-        "La operación deja existencias negativas en el grupo, " +
-        "en esa fecha o en movimientos posteriores."
-      );
-    }
-
+    const clave = `${evento.sede}:${evento.grupoId}`;
+    const saldo = sumarSeguro(saldos.get(clave) || 0, evento.unidades);
     saldos.set(clave, saldo);
+    minimos.set(clave, Math.min(minimos.get(clave) ?? 0, saldo));
+  }
+
+  for (const [clave, minimo] of minimos) {
+    if (minimo >= 0) continue;
+    const minimoAnterior = saldosAnteriores?.get(clave);
+    if (!permitirRecuperacion || minimoAnterior === undefined || minimo < minimoAnterior) {
+      throw new Error("La operación deja existencias negativas en el grupo, en esa fecha o en movimientos posteriores.");
+    }
   }
 
   return saldos;

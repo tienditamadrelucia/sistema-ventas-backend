@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import {
   tocarDias
 } from "../utils/transaccionCaja.js";
-
+import { sumarSeguro } from "../utils/calculoHuevos.mjs";
 import CierreInventario from "../models/CierreInventario.js";
 import {
   GrupoGallinas,
@@ -1192,12 +1192,24 @@ export async function guardarMovimiento(req, session) {
       candidatos
     );
 
-    validarExistencias(
-      eventosHuevos(
-        candidatos,
-        registro.vendidos
-      )
-    );
+    const eventosAnteriores = eventosHuevos(registro.movimientos, registro.vendidos);
+    const minimosAnteriores = new Map();
+    const saldosAnteriores = new Map();
+
+    for (const evento of eventosAnteriores) {
+      const clave = `${evento.sede}:${evento.grupoId}`;
+      const saldo = sumarSeguro(saldosAnteriores.get(clave) || 0, evento.unidades);
+      saldosAnteriores.set(clave, saldo);
+      minimosAnteriores.set(clave, Math.min(minimosAnteriores.get(clave) ?? 0, saldo));
+    }
+
+validarExistencias(
+  eventosHuevos(candidatos, registro.vendidos),
+  {
+    permitirRecuperacion: tipo === "PRODUCCION",
+    saldosAnteriores: minimosAnteriores
+  }
+);
   } catch (error) {
     throw fallo(409, error.message);
   }
