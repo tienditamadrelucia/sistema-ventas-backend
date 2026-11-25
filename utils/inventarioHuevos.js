@@ -1,5 +1,5 @@
 import mongoose from "mongoose";
-
+import Ventas from "../models/dbVentas.js";
 import {
   ConfiguracionHuevos,
   MovimientoHuevos,
@@ -74,7 +74,8 @@ export async function cargarRegistroHuevos(
     .lean();
 
   const filtro = {
-    "asignacionesHuevos.0": { $exists: true }
+    "asignacionesHuevos.0": { $exists: true },
+    descuentaInventario: { $ne: false }
   };
 
   if (excluirVenta) {
@@ -95,10 +96,41 @@ export async function cargarRegistroHuevos(
     ];
   }
 
-  const vendidos = await Vendidos
-    .find(filtro)
-    .session(session)
-    .lean();
+  const detalles = await Vendidos.find(filtro)
+  .session(session || null).lean();
+
+const facturas = [...new Set(detalles.map(v => v.factura))];
+const cabeceras = await Ventas.find({
+  factura: { $in: facturas }
+}).select("factura sede fecha estado tipoMovimiento")
+  .session(session || null).lean();
+
+const mapaCabeceras = new Map();
+
+for (const venta of cabeceras) {
+  const clave = `${venta.sede || "TIENDITA"}:${venta.factura}`;
+  if (!mapaCabeceras.has(clave)) mapaCabeceras.set(clave, []);
+  mapaCabeceras.get(clave).push(venta);
+}
+
+const vendidos = detalles.filter(detalle => {
+  const clave = `${detalle.sede || "TIENDITA"}:${detalle.factura}`;
+  const coincidencias = mapaCabeceras.get(clave) || [];
+
+  if (coincidencias.length !== 1) {
+    throw fallo(409,
+      `Factura ${detalle.factura} de ${detalle.sede || "TIENDITA"}: requiere revisión de su cabecera.`);
+  }
+
+  const venta = coincidencias[0];
+
+  if (!venta.fecha || !Number.isFinite(new Date(venta.fecha).getTime())) {
+    throw fallo(409, `Factura ${detalle.factura}: fecha inválida.`);
+  }
+
+  return venta.estado !== "CREDITO" &&
+    venta.tipoMovimiento !== "OTRO_INGRESO";
+});
 
   const grupos = await GrupoGallinas
     .find()
@@ -193,6 +225,80 @@ export async function stockGeneralHuevos(
     producto,
     unidades,
     fechaBase: saldo.fechaBase
+  };
+}
+
+// DIAGNÓSTICO DE EXISTENCIAS DE HUEVOS
+export async function diagnosticoInventarioHuevos(config, sede, session) {
+  if (!["MONASTERIO", "TIENDITA"].includes(sede)) {
+    throw fallo(400, "Sede inválida.");
+  }
+
+  const general = await stockGeneralHuevos(
+    config, sede, session, null,
+    { permitirNegativo: true }
+  );
+
+  const registro = await cargarRegistroHuevos(session);
+  const eventos = registro.eventos.filter(e => e.sede === sede);
+  const grupos = registro.grupos.map(grupo => {
+    const lista = eventos.filter(e => e.grupoId === String(grupo._id));
+    const saldo = lista.reduce((suma, e) => suma + e.unidades, 0);
+
+    return {
+      grupoId: String(grupo._id),
+      nombre: grupo.nombre,
+      activo: grupo.activo,
+      produccionYRecepcion: lista.filter(e => e.unidades > 0)
+        .reduce((suma, e) => suma + e.unidades, 0),
+      retiros: lista.filter(e => e.unidades < 0)
+        .reduce((suma, e) => suma + Math.abs(e.unidades), 0),
+      saldo,
+      negativo: saldo < 0
+    };
+  });
+
+  const totalConGrupo = eventos.reduce((suma, e) => suma + e.unidades, 0);
+  const diferencia = general.unidades - totalConGrupo;
+
+  const idsGrupos = new Set(grupos.map(g => g.grupoId));
+  const eventosSinGrupoValido = eventos.filter(e => !idsGrupos.has(e.grupoId));
+
+  const inventario = await saldoInventario(general.producto, sede, session);
+  const alertas = [];
+
+  if (general.unidades < 0)
+    alertas.push("El inventario general tiene existencias negativas.");
+
+  if (diferencia < 0)
+    alertas.push(`El seguimiento por grupos supera al inventario general en ${Math.abs(diferencia)} huevos.`);
+
+  if (grupos.some(g => g.negativo))
+    alertas.push("Existen grupos con saldo negativo.");
+
+  if (eventosSinGrupoValido.length)
+    alertas.push("Existen movimientos asociados a grupos inexistentes.");
+
+  return {
+    sede,
+    productoId: general.producto._id,
+    fechaBase: general.fechaBase,
+    inventarioGeneral: {
+      stockInicial: Math.round(inventario.stockInicial * 30),
+      entradas: Math.round(inventario.totalEntradas * 30),
+      salidas: Math.round(inventario.totalSalidas * 30),
+      ventas: Math.round(inventario.totalVentas * 30),
+      existencia: general.unidades
+    },
+    totalConGrupo,
+    diferencia,
+    existenciaSinGrupo: diferencia >= 0 ? diferencia : null,
+    huevosFaltantes: Math.max(0, -diferencia),
+    cartonesEquivalentes: Math.max(0, -diferencia) / 30,
+    grupos,
+    eventosSinGrupoValido,
+    alertas,
+    requiereConciliacion: alertas.length > 0
   };
 }
 

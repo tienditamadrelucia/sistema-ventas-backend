@@ -29,7 +29,10 @@ export async function diagnosticoHuevos(req, res) {
     }
 
     const sede = req.query.sede || "TIENDITA";
-    comprobarAcceso(req, sede);
+      if (!["MONASTERIO", "TIENDITA"].includes(sede)) {
+        throw fallo(400, "Sede inválida.");
+      }
+      comprobarAcceso(req, sede);
 
     let respuesta;
 
@@ -85,12 +88,13 @@ export async function diagnosticoHuevos(req, res) {
   .session(session)
   .lean();
 
-      const ventas = await Vendidos.find(filtro)
-        .select(
-          "factura cantidad asignacionesHuevos huevosUnidades"
-        )
-        .session(session)
-        .lean();
+      const ventas = await Vendidos.find({
+  ...filtro,
+  descuentaInventario: { $ne: false }
+})
+  .select("factura cantidad asignacionesHuevos huevosUnidades")
+  .session(session)
+  .lean();
 
       const registro = await cargarRegistroHuevos(session);
 
@@ -203,6 +207,35 @@ const general = saldoAplicable.stockReal;
         }
       }
 
+      const inconsistenciasSalidas = [];
+
+for (const mov of registro.movimientos) {
+  if (mov.sede !== sede ||
+      !["CONSUMO", "MERMA", "ENVIO"].includes(mov.tipo)) continue;
+
+  const vinculadas = salidas.filter(
+    fila => String(fila.movimientoHuevosId) === String(mov._id)
+  );
+
+  const salida = vinculadas.find(
+    fila => String(fila._id) === String(mov.salidaId)
+  );
+
+  if (vinculadas.length !== 1 || !salida ||
+      !Number.isFinite(Number(salida.cantidad)) ||
+      Math.abs(Number(salida.cantidad) * 30 - mov.unidades) > 0.00001) {
+    inconsistenciasSalidas.push({
+      movimientoId: mov._id,
+      salidaId: mov.salidaId,
+      tipo: mov.tipo,
+      fecha: mov.fecha,
+      huevosEsperados: mov.unidades,
+      cantidadCartonesRegistrada: salida?.cantidad ?? null,
+      registrosVinculados: vinculadas.length
+    });
+  }
+}
+
       const sinAsignacion = ventas.filter(
         venta => !venta.asignacionesHuevos?.length
       );
@@ -217,7 +250,7 @@ const general = saldoAplicable.stockReal;
   },
   ...filtroSede
 })
-  .select("factura fecha cierre")
+  .select("factura fecha cierre estado tipoMovimiento")
   .session(session)
   .lean();
 
@@ -241,10 +274,11 @@ for (const venta of sinAsignacion) {
       cantidad: venta.cantidad,
       coincidencias: coincidencias.length
     });
-  } else if (
-    new Date(coincidencias[0].fecha) >=
-    desdeActivacion
-  ) {
+    } else if (
+      coincidencias[0].estado !== "CREDITO" &&
+      coincidencias[0].tipoMovimiento !== "OTRO_INGRESO" &&
+      new Date(coincidencias[0].fecha) >= desdeActivacion
+    ) {
     ventasSinGrupoDesdeActivacion.push({
       id: venta._id,
       factura: venta.factura,
@@ -311,7 +345,7 @@ const salidasManualesDesdeActivacion =
         ventasSinFechaUnica,
         salidasManualesDesdeActivacion,
         inconsistenciasEntradas,
-
+        inconsistenciasSalidas,
         ventasSinAsignacion: {
           renglones: sinAsignacion.length,
           cartones: sumar(sinAsignacion)

@@ -54,8 +54,9 @@ import {
   bloquearRegistroHuevos,
   cargarRegistroHuevos,
   productoDeHuevos,
-  stockGeneralHuevos
-} from "../utils/inventarioHuevos.js";
+  stockGeneralHuevos,
+  diagnosticoInventarioHuevos
+  } from "../utils/inventarioHuevos.js";
 
 // CONCEPTOS DE GASTOS
 export const CONCEPTOS_HUEVOS = [
@@ -393,6 +394,57 @@ export async function obtenerConfiguracionHuevos(req, res) {
     });
   } catch (error) {
     return errorRespuesta(res, error);
+  }
+}
+
+// CONSULTAR DIAGNÓSTICO DE INVENTARIO DE HUEVOS
+export async function consultarDiagnosticoHuevos(req, res) {
+  let session;
+  try {
+    if (req.usuarioCaja?.rol !== "ADMINISTRADOR") {
+      throw fallo(403, "Solo la administradora puede consultar la conciliación de huevos.");
+    }
+
+    session = await mongoose.startSession();
+    let resultado;
+
+    await session.withTransaction(async () => {
+      const config = await configuracionHuevos(session);
+      if (!config) {
+        throw fallo(409, "El control de huevos no está configurado.");
+      }
+
+      const monasterio = await diagnosticoInventarioHuevos(
+        config, "MONASTERIO", session
+      );
+      const tiendita = await diagnosticoInventarioHuevos(
+        config, "TIENDITA", session
+      );
+
+      resultado = {
+        ok: true,
+        fechaConsulta: new Date(),
+        requiereConciliacion:
+          monasterio.requiereConciliacion ||
+          tiendita.requiereConciliacion,
+        sedes: [monasterio, tiendita]
+      };
+    }, {
+      readConcern: { level: "snapshot" },
+      writeConcern: { w: "majority" }
+    });
+
+    return res.json(resultado);
+  } catch (error) {
+    console.error("Error en diagnóstico de huevos:", error);
+    return res.status(error.estado || 500).json({
+      ok: false,
+      mensaje: error.estado
+        ? error.message
+        : "No se pudo realizar el diagnóstico de huevos."
+    });
+  } finally {
+    if (session) await session.endSession();
   }
 }
 

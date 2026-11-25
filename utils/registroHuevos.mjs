@@ -77,8 +77,9 @@ export function eventosHuevos(movimientos, vendidos) {
   }
 
   for (const vendido of vendidos) {
-    if (!vendido.asignacionesHuevos?.length) continue;
-
+  if (vendido.descuentaInventario === false ||
+      !vendido.asignacionesHuevos?.length) continue;
+      
     for (const asignacion of vendido.asignacionesHuevos) {
       if (!asignacion.grupoId) continue;
 
