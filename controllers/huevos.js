@@ -10,6 +10,7 @@ import {
   ConfiguracionHuevos,
   MovimientoHuevos,
   OperacionHuevos,
+  ConciliacionHuevos,
   AuditoriaHuevos
 } from "../models/Huevos.js";
 import {
@@ -45,7 +46,7 @@ import {
   eventosHuevos,
   validarExistencias,
   disponiblesDesde,
-  gallinasDisponibles,
+  gallinasDisponibles,  
   validarProduccionGallinas
 } from "../utils/registroHuevos.mjs";
 
@@ -55,6 +56,7 @@ import {
   cargarRegistroHuevos,
   productoDeHuevos,
   stockGeneralHuevos,
+  comprobarFechaConciliacionHuevos,
   diagnosticoInventarioHuevos
   } from "../utils/inventarioHuevos.js";
 
@@ -448,6 +450,218 @@ export async function consultarDiagnosticoHuevos(req, res) {
   }
 }
 
+// CONCILIACIÓN ADMINISTRATIVA DE EXISTENCIAS
+export async function guardarConciliacionHuevos(req, session) {
+  administrador(req);
+
+  const { sede } = req.body;
+  if (!["MONASTERIO", "TIENDITA"].includes(sede)) {
+    throw fallo(400, "Sede inválida.");
+  }
+
+  comprobarAcceso(req, sede);
+
+  const d = hoy();
+  const cartones = entero(req.body.cartones, "Cartones");
+  const sueltos = entero(req.body.sueltos, "Huevos sueltos");
+
+  if (sueltos >= 30) {
+    throw fallo(400, "Indique menos de 30 huevos sueltos.");
+  }
+
+  const existenciaFisica = cartones * 30 + sueltos;
+  if (!Number.isSafeInteger(existenciaFisica)) {
+    throw fallo(400, "Existencia física inválida.");
+  }
+
+  const motivo = texto(req.body.motivo);
+  if (!motivo) {
+    throw fallo(400, "Indique el motivo de la conciliación.");
+  }
+
+  await abierto(d, sede, session);
+  await comprobarFechaConciliacionHuevos(sede, d, session);
+
+  const config = await configuracionHuevos(session);
+  const general = await stockGeneralHuevos(
+    config, sede, session, null,
+    { permitirNegativo: true }
+  );
+
+  const registro = await cargarRegistroHuevos(session);
+  const eventos = registro.eventos.filter(e => e.sede === sede);
+  const saldos = new Map();
+
+  for (const evento of eventos) {
+    saldos.set(
+      evento.grupoId,
+      sumarSeguro(saldos.get(evento.grupoId) || 0, evento.unidades)
+    );
+  }
+
+  const existenciaGruposAnterior = [...saldos.values()]
+    .reduce((s, n) => sumarSeguro(s, n), 0);
+
+  if (
+    req.body.existenciaGeneralEsperada !== general.unidades ||
+    req.body.existenciaGruposEsperada !== existenciaGruposAnterior
+  ) {
+    throw fallo(409,
+      "Las existencias cambiaron. Actualice antes de conciliar.");
+  }
+
+  if (!Array.isArray(req.body.grupos)) {
+    throw fallo(400, "Indique las existencias conciliadas por grupo.");
+  }
+
+  const asignaciones = new Map();
+
+  for (const item of req.body.grupos) {
+    const grupoId = id(item.grupoId);
+
+    if (asignaciones.has(grupoId)) {
+      throw fallo(400, "Hay grupos duplicados.");
+    }
+
+    if (!registro.grupos.some(g => String(g._id) === grupoId)) {
+      throw fallo(400, "Grupo inexistente.");
+    }
+
+    asignaciones.set(
+      grupoId,
+      entero(item.unidades, "Existencia conciliada")
+    );
+  }
+
+  const ids = new Set([...saldos.keys(), ...asignaciones.keys()]);
+
+  const grupos = [...ids].map(grupoId => {
+    if (!registro.grupos.some(g => String(g._id) === grupoId)) {
+      throw fallo(409, "El historial contiene un grupo inexistente.");
+    }
+
+    if (!asignaciones.has(grupoId)) {
+      throw fallo(400, "Debe confirmar el saldo de cada grupo existente.");
+    }
+
+    const saldoAnterior = saldos.get(grupoId) || 0;
+    const saldoConciliado = asignaciones.get(grupoId);
+
+    return {
+      grupoId,
+      saldoAnterior,
+      saldoConciliado,
+      diferencia: saldoConciliado - saldoAnterior
+    };
+  });
+
+  const existenciaGruposConciliada = grupos.reduce(
+    (s, g) => sumarSeguro(s, g.saldoConciliado), 0
+  );
+
+  if (existenciaGruposConciliada > existenciaFisica) {
+    throw fallo(400,
+      "Los huevos asignados a grupos superan la existencia física.");
+  }
+
+  const diferenciaGeneral = existenciaFisica - general.unidades;
+  const diferenciaGrupos =
+    existenciaGruposConciliada - existenciaGruposAnterior;
+
+  if (!diferenciaGeneral && grupos.every(g => !g.diferencia)) {
+    throw fallo(409, "No existen diferencias que conciliar.");
+  }
+
+  const conciliacion = new ConciliacionHuevos({
+    sede,
+    productoId: general.producto._id,
+    fecha: new Date(`${d}T00:00:00.000Z`),
+    existenciaGeneralAnterior: general.unidades,
+    existenciaGruposAnterior,
+    existenciaFisica,
+    diferenciaGeneral,
+    diferenciaGrupos,
+    grupos,
+    motivo,
+    usuario: req.usuarioCaja._id
+  });
+
+  if (diferenciaGeneral !== 0) {
+    const Modelo = diferenciaGeneral > 0 ? Entrada : Salida;
+
+    const ajuste = new Modelo({
+      fecha: conciliacion.fecha,
+      productoId: general.producto._id,
+      codigo: general.producto.codigo,
+      categoria: general.producto.categoria,
+      cantidad: Math.abs(diferenciaGeneral) / 30,
+      huevosUnidades: Math.abs(diferenciaGeneral),
+      conciliacionHuevosId: conciliacion._id,
+      observacion: "CONCILIACIÓN ADMINISTRATIVA DE HUEVOS",
+      sede,
+      cierre: "N"
+    });
+
+    await ajuste.save({ session });
+
+    if (diferenciaGeneral > 0) {
+      conciliacion.entradaId = ajuste._id;
+    } else {
+      conciliacion.salidaId = ajuste._id;
+    }
+  }
+
+  await conciliacion.save({ session });
+
+  // VERIFICAR AMBOS INVENTARIOS ANTES DE CONFIRMAR
+  const generalFinal = await stockGeneralHuevos(config, sede, session);
+  const registroFinal = await cargarRegistroHuevos(session);
+
+  const saldosFinales = new Map();
+
+  for (const evento of registroFinal.eventos.filter(e => e.sede === sede)) {
+    saldosFinales.set(
+      evento.grupoId,
+      sumarSeguro(saldosFinales.get(evento.grupoId) || 0, evento.unidades)
+    );
+  }
+
+  const gruposFinales = [...saldosFinales.values()]
+    .reduce((s, n) => sumarSeguro(s, n), 0);
+
+  if (
+    generalFinal.unidades !== existenciaFisica ||
+    gruposFinales !== existenciaGruposConciliada ||
+    grupos.some(g =>
+      (saldosFinales.get(String(g.grupoId)) || 0) !== g.saldoConciliado
+    )
+  ) {
+    throw fallo(409,
+      "La conciliación no produjo los saldos esperados. Operación cancelada.");
+  }
+
+  await auditar(
+    req,
+    "CONCILIAR_INVENTARIO",
+    conciliacion._id,
+    {
+      existenciaGeneral: general.unidades,
+      existenciaGrupos: existenciaGruposAnterior
+    },
+    conciliacion.toObject(),
+    session
+  );
+
+  return {
+    ok: true,
+    mensaje: "Inventario de huevos conciliado correctamente.",
+    conciliacionId: conciliacion._id,
+    existenciaGeneral: generalFinal.unidades,
+    existenciaGrupos: gruposFinales,
+    existenciaSinGrupo: generalFinal.unidades - gruposFinales
+  };
+}
+
 // CONSULTAR GRUPOS, MOVIMIENTOS Y EXISTENCIAS
 export async function consultarHuevos(req, res) {
   let session;
@@ -749,7 +963,10 @@ export async function guardarGrupo(req, session) {
     }
 
     const relacionado =
-      await MovimientoHuevos
+  await ConciliacionHuevos
+    .exists({ "grupos.grupoId": grupo._id })
+    .session(session) ||
+  await MovimientoHuevos
         .exists({ grupoId: grupo._id })
         .session(session) ||
 
@@ -855,7 +1072,10 @@ export async function eliminarGrupo(req, session) {
   }
 
   const relacionado =
-    await MovimientoHuevos
+  await ConciliacionHuevos
+    .exists({ "grupos.grupoId": grupo._id })
+    .session(session) ||
+  await MovimientoHuevos
       .exists({ grupoId: grupo._id })
       .session(session) ||
 
@@ -1028,6 +1248,9 @@ export async function guardarMovimiento(req, session) {
   }
 
   const fechaMovimiento = fecha(body.fecha);
+  if (tipo !== "BAJA") {
+    await comprobarFechaConciliacionHuevos(sede, fechaMovimiento, session);
+  }
 
   const grupo = await grupoValido(
     body.grupoId,
@@ -1102,6 +1325,9 @@ export async function guardarMovimiento(req, session) {
     }
 
     anterior = mov.toObject();
+    if (tipo !== "BAJA") {
+      await comprobarFechaConciliacionHuevos(sede, dia(mov.fecha), session);
+    }
 
     await abierto(
       dia(mov.fecha),
@@ -1244,7 +1470,7 @@ export async function guardarMovimiento(req, session) {
       candidatos
     );
 
-    const eventosAnteriores = eventosHuevos(registro.movimientos, registro.vendidos);
+    const eventosAnteriores = registro.eventos;
     const minimosAnteriores = new Map();
     const saldosAnteriores = new Map();
 
@@ -1256,7 +1482,7 @@ export async function guardarMovimiento(req, session) {
     }
 
 validarExistencias(
-  eventosHuevos(candidatos, registro.vendidos),
+  eventosHuevos(candidatos, registro.vendidos, registro.conciliaciones),
   {
     permitirRecuperacion: tipo === "PRODUCCION",
     saldosAnteriores: minimosAnteriores
@@ -1338,6 +1564,9 @@ export async function eliminarMovimiento(req, session) {
   }
 
   comprobarAcceso(req, mov.sede);
+  if (mov.tipo !== "BAJA") {
+    await comprobarFechaConciliacionHuevos(mov.sede, dia(mov.fecha), session);
+  }
 
   if (mov.__v !== req.body.versionEsperada) {
     throw fallo(
@@ -1373,11 +1602,8 @@ export async function eliminarMovimiento(req, session) {
 
   try {
     validarExistencias(
-      eventosHuevos(
-        candidatos,
-        registro.vendidos
-      )
-    );
+  eventosHuevos(candidatos, registro.vendidos, registro.conciliaciones)
+);
 
     gallinasDisponibles(
       grupo,
@@ -1582,6 +1808,13 @@ export async function recibirHuevos(
   }
 
   const d = fecha(req.body.fecha);
+  await comprobarFechaConciliacionHuevos("TIENDITA", d, session);
+
+  if (mov.recepcion) {
+    await comprobarFechaConciliacionHuevos(
+      "TIENDITA", dia(mov.recepcion.fecha), session
+    );
+  }
 
   if (d < dia(mov.fecha)) {
     throw fallo(
@@ -1694,18 +1927,15 @@ export async function recibirHuevos(
 
   try {
     validarExistencias(
-      eventosHuevos(
-        [
-          ...registro.movimientos.filter(
-            m =>
-              String(m._id) !==
-              String(mov._id)
-          ),
-          propuesta
-        ],
-        registro.vendidos
-      )
-    );
+  eventosHuevos(
+    [
+      ...registro.movimientos.filter(m => String(m._id) !== String(mov._id)),
+      propuesta
+    ],
+    registro.vendidos,
+    registro.conciliaciones
+  )
+);
   } catch (e) {
     throw fallo(409, e.message);
   }

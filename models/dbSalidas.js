@@ -74,6 +74,12 @@ const salidaSchema = new mongoose.Schema(
     },
 
     // CONSUMO, PÉRDIDAS Y ENVÍOS DE HUEVOS
+    conciliacionHuevosId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "ConciliacionHuevos",
+      default: undefined
+    },
+
     grupoGallinasId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "GrupoGallinas",
@@ -105,27 +111,34 @@ const salidaSchema = new mongoose.Schema(
 // COMPROBAR LAS SALIDAS VINCULADAS A HUEVOS
 salidaSchema.pre("validate", function () {
   const esSalidaHuevos =
+    this.conciliacionHuevosId ||
     this.movimientoHuevosId ||
     this.grupoGallinasId ||
     this.huevosUnidades !== undefined;
 
   if (!esSalidaHuevos) return;
 
-  if (
-    !this.movimientoHuevosId ||
-    !this.grupoGallinasId ||
-    !Number.isSafeInteger(this.huevosUnidades) ||
-    this.huevosUnidades < 1 ||
-    Math.abs(
-      this.cantidad * 30 - this.huevosUnidades
-    ) > 0.00001 ||
-    this.loteId ||
-    this.consumoId ||
-    this.envioId
-  ) {
+  const cantidadValida =
+    Number.isFinite(this.cantidad) &&
+    Number.isSafeInteger(this.huevosUnidades) &&
+    this.huevosUnidades > 0 &&
+    Math.abs(this.cantidad * 30 - this.huevosUnidades) <= 0.00001;
+
+  const vinculacionAjena =
+    this.loteId || this.consumoId || this.envioId;
+
+  if (this.conciliacionHuevosId) {
+    if (!cantidadValida || vinculacionAjena ||
+        this.movimientoHuevosId || this.grupoGallinasId) {
+      throw new Error("Salida de conciliación de huevos inconsistente.");
+    }
+    return;
+  }
+
+  if (!cantidadValida || vinculacionAjena ||
+      !this.movimientoHuevosId || !this.grupoGallinasId) {
     throw new Error(
-      "La salida de huevos no coincide con su " +
-      "registro de consumo o envío."
+      "La salida de huevos no coincide con su registro de consumo o envío."
     );
   }
 });
@@ -149,6 +162,11 @@ salidaSchema.index({
 salidaSchema.index({
   movimientoHuevosId: 1
 });
+
+salidaSchema.index(
+  { conciliacionHuevosId: 1 },
+  { unique: true, sparse: true }
+);
 
 export default mongoose.model(
   "dbSalidas",

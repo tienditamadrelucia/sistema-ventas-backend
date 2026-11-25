@@ -107,6 +107,11 @@ const entradaSchema = new mongoose.Schema(
     },
 
     // PRODUCCIÓN Y RECEPCIÓN DE HUEVOS
+    conciliacionHuevosId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "ConciliacionHuevos",
+      default: undefined
+    },
     grupoGallinasId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "GrupoGallinas",
@@ -138,28 +143,34 @@ const entradaSchema = new mongoose.Schema(
 // COMPROBAR LAS ENTRADAS VINCULADAS A HUEVOS
 entradaSchema.pre("validate", function () {
   const esEntradaHuevos =
+    this.conciliacionHuevosId ||
     this.movimientoHuevosId ||
     this.grupoGallinasId ||
     this.huevosUnidades !== undefined;
 
   if (!esEntradaHuevos) return;
 
-  if (
-    !this.movimientoHuevosId ||
-    !this.grupoGallinasId ||
-    !Number.isSafeInteger(this.huevosUnidades) ||
-    this.huevosUnidades < 1 ||
-    Math.abs(
-      this.cantidad * 30 - this.huevosUnidades
-    ) > 0.00001 ||
-    this.loteId ||
-    this.produccionId ||
-    this.envioId ||
-    this.gastoId
-  ) {
+  const cantidadValida =
+    Number.isFinite(this.cantidad) &&
+    Number.isSafeInteger(this.huevosUnidades) &&
+    this.huevosUnidades > 0 &&
+    Math.abs(this.cantidad * 30 - this.huevosUnidades) <= 0.00001;
+
+  const vinculacionAjena =
+    this.loteId || this.produccionId || this.envioId || this.gastoId;
+
+  if (this.conciliacionHuevosId) {
+    if (!cantidadValida || vinculacionAjena ||
+        this.movimientoHuevosId || this.grupoGallinasId) {
+      throw new Error("Entrada de conciliación de huevos inconsistente.");
+    }
+    return;
+  }
+
+  if (!cantidadValida || vinculacionAjena ||
+      !this.movimientoHuevosId || !this.grupoGallinasId) {
     throw new Error(
-      "La entrada de huevos no coincide con su " +
-      "registro de producción o recepción."
+      "La entrada de huevos no coincide con su registro de producción o recepción."
     );
   }
 });
@@ -173,6 +184,11 @@ entradaSchema.index({
 entradaSchema.index({
   movimientoHuevosId: 1
 });
+
+entradaSchema.index(
+  { conciliacionHuevosId: 1 },
+  { unique: true, sparse: true }
+);
 
 export default mongoose.model(
   "Entrada",

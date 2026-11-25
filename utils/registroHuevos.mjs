@@ -43,7 +43,7 @@ export function unidadesCartones(cantidad) {
 }
 
 // PREPARAR MOVIMIENTOS POR GRUPO
-export function eventosHuevos(movimientos, vendidos) {
+export function eventosHuevos(movimientos, vendidos, conciliaciones = []) {
   const eventos = [];
 
   for (const movimiento of movimientos) {
@@ -93,16 +93,32 @@ export function eventosHuevos(movimientos, vendidos) {
     }
   }
 
+  // INCORPORAR AJUSTES ADMINISTRATIVOS POR GRUPO
+for (const conciliacion of conciliaciones) {
+  for (const grupo of conciliacion.grupos || []) {
+    if (!grupo.diferencia) continue;
+    eventos.push({
+      grupoId: String(grupo.grupoId),
+      sede: conciliacion.sede,
+      fecha: dia(conciliacion.fecha),
+      unidades: grupo.diferencia,
+      referencia: String(conciliacion._id),
+      esConciliacion: true
+    });
+  }
+}
+
   for (const evento of eventos) {
     entero(Math.abs(evento.unidades), "Unidades");
   }
 
   return eventos.sort(
-    (a, b) =>
-      a.fecha.localeCompare(b.fecha) ||
-      b.unidades - a.unidades ||
-      a.referencia.localeCompare(b.referencia)
-  );
+  (a, b) =>
+    a.fecha.localeCompare(b.fecha) ||
+    Number(Boolean(a.esConciliacion)) - Number(Boolean(b.esConciliacion)) ||
+    b.unidades - a.unidades ||
+    a.referencia.localeCompare(b.referencia)
+);
 }
 
 // COMPROBAR QUE NO QUEDEN EXISTENCIAS NEGATIVAS

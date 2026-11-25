@@ -271,6 +271,53 @@ const auditoriaSchema = new Schema(
   { timestamps: true }
 );
 
+// CONCILIACIÓN ADMINISTRATIVA DE INVENTARIO DE HUEVOS
+const conciliacionGrupoSchema = new Schema({
+  grupoId: referencia("GrupoGallinas"),
+  saldoAnterior: { type: Number, required: true, validate: entero },
+  saldoConciliado: { type: Number, required: true, min: 0, validate: entero },
+  diferencia: { type: Number, required: true, validate: entero }
+}, { _id: false });
+
+const conciliacionSchema = new Schema({
+  sede: {
+    type: String,
+    enum: ["MONASTERIO", "TIENDITA"],
+    required: true
+  },
+  productoId: referencia("Producto"),
+  fecha: { type: Date, required: true },
+  existenciaGeneralAnterior: { type: Number, required: true, validate: entero },
+  existenciaGruposAnterior: { type: Number, required: true, validate: entero },
+  existenciaFisica: { type: Number, required: true, min: 0, validate: entero },
+  diferenciaGeneral: { type: Number, required: true, validate: entero },
+  diferenciaGrupos: { type: Number, required: true, validate: entero },
+  grupos: { type: [conciliacionGrupoSchema], default: [] },
+  motivo: { type: String, required: true, trim: true, maxlength: 2000 },
+  usuario: referencia("Usuario"),
+  entradaId: { ...referencia("Entrada", false), default: null },
+  salidaId: { ...referencia("dbSalidas", false), default: null }
+}, { timestamps: true });
+
+conciliacionSchema.index({ sede: 1, fecha: -1, _id: -1 });
+
+conciliacionSchema.pre("validate", function () {
+  const ids = this.grupos.map(g => String(g.grupoId));
+  const saldoAnterior = this.grupos.reduce((s, g) => s + g.saldoAnterior, 0);
+  const saldoConciliado = this.grupos.reduce((s, g) => s + g.saldoConciliado, 0);
+
+  if (
+    new Set(ids).size !== ids.length ||
+    saldoAnterior !== this.existenciaGruposAnterior ||
+    saldoConciliado > this.existenciaFisica ||
+    this.diferenciaGeneral !== this.existenciaFisica - this.existenciaGeneralAnterior ||
+    this.diferenciaGrupos !== saldoConciliado - saldoAnterior ||
+    this.grupos.some(g => g.diferencia !== g.saldoConciliado - g.saldoAnterior)
+  ) {
+    throw new Error("Conciliación de huevos inconsistente.");
+  }
+});
+
 export const GrupoGallinas = mongoose.model(
   "GrupoGallinas",
   grupoSchema
@@ -294,4 +341,9 @@ export const OperacionHuevos = mongoose.model(
 export const AuditoriaHuevos = mongoose.model(
   "AuditoriaHuevos",
   auditoriaSchema
+);
+
+export const ConciliacionHuevos = mongoose.model(
+  "ConciliacionHuevos",
+  conciliacionSchema
 );

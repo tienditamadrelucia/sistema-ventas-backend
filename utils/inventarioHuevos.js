@@ -3,6 +3,7 @@ import Ventas from "../models/dbVentas.js";
 import {
   ConfiguracionHuevos,
   MovimientoHuevos,
+  ConciliacionHuevos,
   GrupoGallinas
 } from "../models/Huevos.js";
 
@@ -138,12 +139,35 @@ const vendidos = detalles.filter(detalle => {
     .session(session)
     .lean();
 
-  return {
-    movimientos,
-    vendidos,
-    grupos,
-    eventos: eventosHuevos(movimientos, vendidos)
-  };
+  const conciliaciones = await ConciliacionHuevos
+  .find()
+  .sort({ fecha: 1, _id: 1 })
+  .session(session || null)
+  .lean();
+
+return {
+  movimientos,
+  vendidos,
+  grupos,
+  conciliaciones,
+  eventos: eventosHuevos(movimientos, vendidos, conciliaciones)
+};
+}
+
+// PROTEGER EL HISTORIAL ANTERIOR A UNA CONCILIACIÓN
+export async function comprobarFechaConciliacionHuevos(sede, fecha, session) {
+  const ultima = await ConciliacionHuevos
+    .findOne({ sede })
+    .sort({ fecha: -1, _id: -1 })
+    .session(session || null)
+    .lean();
+
+  if (ultima && dia(fecha) <= dia(ultima.fecha)) {
+    throw fallo(423,
+      "Esta fecha pertenece a un período conciliado de huevos. " +
+      "No se permiten modificaciones que alteren el saldo conciliado."
+    );
+  }
 }
 
 // EXISTENCIA GENERAL:
@@ -361,6 +385,12 @@ export async function prepararVentaHuevos({
     );
   }
 
+  if (anterioresHuevos.length && fechaAnterior) {
+  await comprobarFechaConciliacionHuevos(
+    sede, dia(fechaAnterior), session
+  );
+}
+
   // No inventar la procedencia de ventas antiguas.
   if (
     anterioresHuevos.length &&
@@ -402,7 +432,15 @@ export async function prepararVentaHuevos({
 
   await bloquearRegistroHuevos(session);
 
-  const excluirVenta =
+await comprobarFechaConciliacionHuevos(sede, fecha, session);
+
+if (fechaAnterior) {
+  await comprobarFechaConciliacionHuevos(
+    sede, dia(fechaAnterior), session
+  );
+}
+
+const excluirVenta =
     factura !== undefined && factura !== null
       ? { factura, sede }
       : null;
@@ -540,10 +578,12 @@ export async function prepararVentaHuevos({
     }
 
     eventos.sort(
-      (a, b) =>
-        a.fecha.localeCompare(b.fecha) ||
-        b.unidades - a.unidades
-    );
+  (a, b) =>
+    a.fecha.localeCompare(b.fecha) ||
+    Number(Boolean(a.esConciliacion)) - Number(Boolean(b.esConciliacion)) ||
+    b.unidades - a.unidades ||
+    a.referencia.localeCompare(b.referencia)
+);
 
     restantes -= unidades;
   }
@@ -579,6 +619,7 @@ export async function protegerMovimientoHuevos(req, res, next) {
         : null;
 
     const vinculado = anterior && (
+      anterior.conciliacionHuevosId ||
       anterior.movimientoHuevosId ||
       anterior.grupoGallinasId ||
       anterior.huevosUnidades != null ||
@@ -650,6 +691,9 @@ export async function protegerMovimientoHuevos(req, res, next) {
       }
 
       await bloquearRegistroHuevos(req.cajaMongo);
+      await comprobarFechaConciliacionHuevos(
+        sede, anterior.fecha, req.cajaMongo
+      );
 
       await comprobarDiaHuevos(
         dia(anterior.fecha),
@@ -707,7 +751,21 @@ export async function protegerMovimientoHuevos(req, res, next) {
       return next();
     }
 
-    if (anterior?.movimientoHuevosId || esHuevo) {
+    if (anterior?.conciliacionHuevosId || req.body?.conciliacionHuevosId) {
+        throw fallo(409,
+        "Los ajustes de conciliación de huevos no pueden modificarse ni eliminarse directamente."
+      );
+    }
+
+    if (
+      anterior?.movimientoHuevosId ||
+      anterior?.grupoGallinasId ||
+      anterior?.huevosUnidades != null ||
+      req.body?.movimientoHuevosId ||
+      req.body?.grupoGallinasId ||
+      req.body?.huevosUnidades != null ||
+      esHuevo
+    ) {
       throw fallo(
         409,
         "Registre o corrija este movimiento desde el módulo de huevos."
